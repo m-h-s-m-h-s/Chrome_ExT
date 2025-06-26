@@ -10,25 +10,24 @@
 .chaching-notification {
   /* Positioning */
   position: fixed;
-  top: 30px;
+  bottom: 30px;
   right: 30px;
   width: 500px;
   min-height: 180px;
-  z-index: 2147483647;
   
-  /* Brand Appearance */
-  background: #F2F3F4; /* Off White */
-  border-radius: 16px;
-  border: 3px solid #F9F27F; /* Noticeable Yellow Accent Border */
-  box-shadow: 0 8px 32px rgba(2, 38, 107, 0.15); /* Subtle shadow using dark blue */
+  /* Brand Appearance - Inspired by Rakuten's noticeable style */
+  background: #FFFFFF; /* A clean, solid white background */
+  border-radius: 12px; /* Slightly softer radius */
+  border: 3px solid #FFC700; /* A vibrant, unmissable yellow */
+  box-shadow: 0 8px 24px rgba(10, 22, 70, 0.45); /* A strong, deep shadow */
   
   /* Typography */
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
   /* Animation */
-  transform: translateY(-120%);
+  transform: translateY(150%);
   opacity: 0;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); /* Smoother animation */
+  transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s ease-out; /* Slower, more impactful animation */
   overflow: hidden;
 }
 
@@ -38,9 +37,9 @@
   opacity: 1;
 }
 .chaching-notification.chaching-hide {
-  transform: translateY(-120%);
+  transform: translateY(150%);
   opacity: 0;
-  transition: all 0.2s ease-in;
+  transition: all 0.3s ease-in;
 }
 
 /* Content Wrapper - Updated for better alignment and spacing */

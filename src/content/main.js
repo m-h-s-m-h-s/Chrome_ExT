@@ -182,6 +182,19 @@ class ChachingContentScript {
 
     // Create notification element
     const notification = this.createNotificationElement();
+
+    const setZIndex = (nodes) => {
+      const highestZ = this.getHighestZIndex(nodes);
+      // Ensure we don't accidentally lower our z-index if it's already high
+      const currentZ = parseInt(notification.style.zIndex, 10) || 0;
+      if (highestZ + 1 > currentZ) {
+        notification.style.zIndex = highestZ + 1;
+        ChachingUtils.log('info', 'ContentScript', `Dynamically set z-index to ${highestZ + 1}.`);
+      }
+    };
+
+    // Set z-index immediately on creation
+    setZIndex();
     
     // Add to page
     document.body.appendChild(notification);
@@ -191,6 +204,27 @@ class ChachingContentScript {
     setTimeout(() => {
       notification.classList.add('chaching-show');
     }, 100);
+
+    // Re-check z-index after short delays to win wars against late-loading scripts.
+    setTimeout(setZIndex, 500);
+    setTimeout(setZIndex, 1500);
+
+    // Use a MutationObserver to watch for other elements being added to the page
+    // and re-assert our z-index if needed.
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          // A new node was added. Let's check its z-index and its children's.
+          setTimeout(() => setZIndex(mutation.addedNodes), 100);
+          return; // No need to check other mutations in this batch
+        }
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Store the observer on the notification element so we can disconnect it later
+    notification.chachingObserver = observer;
 
     // NO AUTO-HIDE - notification stays until dismissed
   }
@@ -248,6 +282,48 @@ class ChachingContentScript {
   }
 
   /**
+   * Finds the highest z-index on the page to ensure the notification is on top.
+   * This now recursively searches inside Shadow DOMs.
+   * @returns {number} The highest z-index found.
+   */
+  getHighestZIndex(nodes) {
+    let highestIndex = 0;
+
+    const elements = nodes || document.querySelectorAll('*');
+
+    // Recursive function to find the max z-index in a node tree (including shadow DOMs)
+    const findHighestZ = (nodeList) => {
+      for (const element of nodeList) {
+        if (element.nodeType !== Node.ELEMENT_NODE) {
+          continue;
+        }
+        
+        // Skip our own notification elements to avoid an infinite loop
+        if (element.classList && element.classList.contains('chaching-notification')) {
+          continue;
+        }
+
+        const style = window.getComputedStyle(element);
+        const zIndex = parseInt(style.zIndex, 10);
+        
+        if (zIndex > highestIndex) {
+          highestIndex = zIndex;
+        }
+        
+        // If the element has a shadow root, and it's open, recursively search inside it
+        if (element.shadowRoot && element.shadowRoot.mode === 'open') {
+          findHighestZ(element.shadowRoot.querySelectorAll('*'));
+        }
+      }
+    };
+
+    findHighestZ(elements);
+    
+    // If no z-index is found, default to a very high number as a safety net.
+    return Math.max(highestIndex, 2147483640);
+  }
+
+  /**
    * Truncates a string to a given length, appending an ellipsis if it was cut.
    * 
    * @param {string} str - The string to truncate.
@@ -265,6 +341,11 @@ class ChachingContentScript {
    * @param {HTMLElement} notification - The notification element to be removed.
    */
   hideNotification(notification) {
+    // Disconnect the observer to prevent memory leaks when the notification is hidden.
+    if (notification.chachingObserver) {
+      notification.chachingObserver.disconnect();
+    }
+
     notification.classList.remove('chaching-show');
     notification.classList.add('chaching-hide');
     

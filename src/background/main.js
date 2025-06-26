@@ -35,6 +35,24 @@ const CONFIG = {
 const detectedProducts = new Map();
 
 /**
+ * A list of domains to exclude from script injection.
+ * @const {string[]}
+ */
+const EXCLUDED_DOMAINS = [
+  'chaching.me',
+  'google.com',
+  'youtube.com',
+  'facebook.com',
+  'twitter.com',
+  'linkedin.com',
+  'github.com',
+  'wikipedia.org',
+  'reddit.com',
+  'localhost',
+  '127.0.0.1'
+];
+
+/**
 * Listens for the `onInstalled` event, which fires when the extension is first
 * installed, updated to a new version, or when the browser is updated.
 */
@@ -92,13 +110,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Background] Message received:', { type: request.type, sender_tab: sender.tab?.id });
   
   switch (request.type) {
-    // A content script has detected a product on a page.
-    case 'PRODUCT_DETECTED':
-      handleProductDetection(request.data, sender.tab);
-      sendResponse({ success: true, message: 'Product data received.' });
-      break;
-      
-    // A script is sending an analytics event to be logged.
+    // A content script is sending an analytics event to be logged.
     case 'TRACK_EVENT':
       trackAnalyticsEvent(request.data);
       sendResponse({ success: true });
@@ -110,15 +122,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: true, data: tabData });
       break;
       
-    // A script is asking to clear the data for a tab (e.g., on re-detect).
-    case 'CLEAR_TAB_DATA':
-      if (sender.tab?.id) {
-        detectedProducts.delete(sender.tab.id);
-        // updateIcon(sender.tab.id, false); // Icon updates disabled for MVP.
-      }
-      sendResponse({ success: true });
-      break;
-      
     default:
       console.warn('[Background] Received an unknown message type:', request.type);
       sendResponse({ success: false, error: 'Unknown message type' });
@@ -128,67 +131,88 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /**
- * Handles the data received from a content script when a product is detected.
- * This function stores the data and updates the browser UI (badge text).
- *
- * @param {Object} data - The detection data from the content script.
- * @param {chrome.tabs.Tab} tab - The tab object where the detection occurred.
+ * Listens for when a tab is updated (e.g., the user navigates to a new URL).
+ * This is now the main trigger for our brand detection logic.
  */
-function handleProductDetection(data, tab) {
-  if (!tab?.id) {
-    console.warn('[Background] Received product detection from a tab without an ID.', tab);
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // We only want to run our logic when the page has finished loading.
+  if (changeInfo.status !== 'complete' || !tab.url) {
     return;
   }
   
-  console.log(`[Background] Storing product data for tab ${tab.id}:`, data.title);
-  
-  // Store the complete detection data in our Map, keyed by the tab ID.
-  detectedProducts.set(tab.id, {
-    ...data,
-    detectedAt: new Date().toISOString(),
-    tabId: tab.id,
-    domain: new URL(tab.url).hostname // Storing domain for potential analytics.
-  });
-  
-  // Update the extension's badge to show the confidence score.
-  // This provides immediate visual feedback to the user in the toolbar.
-  chrome.action.setBadgeText({
-    text: `${data.confidence}%`,
-    tabId: tab.id
-  });
-  
-  // Set the background color of the badge for better visibility.
-  chrome.action.setBadgeBackgroundColor({
-    color: CONFIG.BADGE_COLORS.DETECTED,
-    tabId: tab.id
-  });
-  
-  // Log a specific analytics event for the detection.
-  trackAnalyticsEvent({
-    event: 'product_detected',
-    confidence: data.confidence,
-    domain: new URL(tab.url).hostname,
-    // Add other boolean flags for easier analysis.
-    hasPrice: !!data.productInfo.price,
-    hasImage: data.productInfo.images.length > 0
-  });
-}
+  // Check if the URL's domain is on our exclusion list.
+  try {
+    const url = new URL(tab.url);
+    if (EXCLUDED_DOMAINS.some(domain => url.hostname.includes(domain))) {
+      console.log(`[Background] Skipping tab ${tabId} on excluded domain: ${url.hostname}`);
+      return;
+    }
+  } catch (error) {
+    console.warn(`[Background] Could not parse URL, skipping: ${tab.url}`, error);
+    return; // Invalid URL, do nothing.
+  }
 
-/**
- * A placeholder function for updating the extension's icon.
- * Currently disabled for the MVP to use Chrome's default icon.
- *
- * @param {number} tabId - The ID of the tab to update the icon for.
- * @param {boolean} isActive - Whether to show the active or inactive icon.
- */
-function updateIcon(tabId, isActive) {
-  // This functionality is disabled for the MVP. To re-enable, you would uncomment
-  // the code below and re-introduce the ICON_STATES to the CONFIG object.
-  /*
-  const iconSet = isActive ? CONFIG.ICON_STATES.ACTIVE : CONFIG.ICON_STATES.INACTIVE;
-  chrome.action.setIcon({ path: iconSet, tabId: tabId });
-  */
-}
+  console.log(`[Background] Tab ${tabId} updated to complete status. Running detector...`);
+
+  try {
+    // Step 1: Inject the detection scripts.
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: [
+        "src/shared/utils.js",
+        "src/content/brands.js",
+        "src/content/detector.js"
+      ],
+    });
+
+    // Step 2: Run the detector on the page.
+    const injectionResults = await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      function: () => {
+        // This function is executed in the content script context
+        const detector = new ProductDetector();
+        return detector.detectBrandOnPage();
+      },
+    });
+
+    // The result from the content script is wrapped in an array.
+    const detectionResult = injectionResults[0].result;
+
+    if (detectionResult && detectionResult.isSupported) {
+      console.log(`[Background] Supported brand "${detectionResult.productInfo.brand}" found on tab ${tabId}. Injecting UI...`);
+      
+      // Store the result for the popup.
+      detectedProducts.set(tabId, {
+        ...detectionResult,
+        detectedAt: new Date().toISOString(),
+        tabId: tabId,
+        domain: new URL(tab.url).hostname
+      });
+      
+      // Step 3: Inject the UI (CSS and main content script).
+      await chrome.scripting.insertCSS({
+        target: { tabId: tabId },
+        files: ["src/content/styles.css"],
+      });
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ["src/content/main.js"],
+      });
+      
+    } else {
+      console.log(`[Background] No supported brand found on tab ${tabId}.`);
+      // Clear any old data for this tab if a brand is no longer detected.
+      if (detectedProducts.has(tabId)) {
+        detectedProducts.delete(tabId);
+      }
+    }
+  } catch (error) {
+    // This can happen if the page is a special Chrome page, has content security
+    // policies that block injection, or has already been invalidated.
+    console.warn(`[Background] Could not inject scripts into tab ${tabId}:`, error.message);
+  }
+});
 
 /**
  * Listens for when a tab is closed. We use this to perform garbage collection
@@ -198,22 +222,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (detectedProducts.has(tabId)) {
     detectedProducts.delete(tabId);
     console.log(`[Background] Cleaned up data for closed tab: ${tabId}`);
-  }
-});
-
-/**
- * Listens for when a tab is updated (e.g., the user navigates to a new URL).
- * We clear the stored data and badge text for that tab to ensure freshness.
- */
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // We only care about events where the URL has changed.
-  if (changeInfo.url) {
-    if (detectedProducts.has(tabId)) {
-      detectedProducts.delete(tabId);
-    }
-    // Reset the badge text for the new page.
-    chrome.action.setBadgeText({ text: '', tabId: tabId });
-    console.log(`[Background] Cleared data for tab ${tabId} due to navigation.`);
   }
 });
 

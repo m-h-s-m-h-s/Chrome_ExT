@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "notifications"
+    "notifications",
+    "scripting"
   ],
   "host_permissions": [
     "https://*/*",
@@ -57,7 +58,14 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["src/assets/ChaChing_Logo.png"],
+      "resources": [
+        "src/assets/ChaChing_Logo.png",
+        "src/content/styles.css",
+        "src/shared/utils.js",
+        "src/content/brands.js",
+        "src/content/detector.js",
+        "src/content/main.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]
