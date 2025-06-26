@@ -1,30 +1,17 @@
 /**
- * @file src/content/brands.js
- * @description A centralized list of supported brands and their cashback levels.
+ * brands.js - A centralized list of supported brands and their cashback levels.
  *
- * @version 3.0.0
+ * This file contains the array of brand objects that the extension will actively look for.
+ * Each object contains a brand name and its associated cashback percentage.
+ * The list is converted into a Map for highly efficient O(1) lookups.
  *
- * **********************************************************************************
+ * To add, remove, or change supported brands, simply edit the `brands` array below.
+ * The brand names should be in lowercase to ensure case-insensitive matching.
  *
- * This file defines the brands that the extension will actively look for. It's the
- * primary configuration file that a developer will modify during normal operations.
- *
- * The data is structured as an array of objects, where each object contains:
- *   - `name`: The brand's name in lowercase. This is used for matching.
- *   - `cashback`: The integer cashback percentage associated with the brand.
- *
- * For performance, this array is converted into two data structures:
- *   - `SUPPORTED_BRANDS_MAP`: A Map where the key is the normalized brand name and
- *     the value is the full brand object. This allows for O(1) (instant) lookups
- *     to retrieve brand data, including the cashback level.
- *   - `SUPPORTED_BRANDS_ARRAY`: An array of just the brand names. This is used by
- *     the detector when it needs to iterate through all supported brand names quickly.
- *
- * **********************************************************************************
+ * @module brands
  */
 
 // To add a new brand, add its object to this array with a name and cashback level.
-// The `name` should always be lowercase for consistent matching.
 // For example: `const brands = [{ name: 'nike', cashback: 8 }, ...];`
 const brands = [
   { name: 'ruggable', cashback: 10 },
@@ -50,24 +37,19 @@ const brands = [
   { name: 'chanel', cashback: 5 }
 ];
 
-// Normalize all brand names in the array for consistent matching. This step ensures
-// that any variations in the source array are cleaned up before being used.
+// Normalize all brand names in the array for consistent matching.
 const normalizedBrands = brands.map(brand => ({
   ...brand,
   name: normalizeBrand(brand.name)
 }));
 
 // We use a Map for O(1) lookups, mapping brand names to their full object.
-// This is extremely efficient for finding a brand's data once we have its name.
 const SUPPORTED_BRANDS_MAP = new Map(normalizedBrands.map(brand => [brand.name, brand]));
 
-// We also expose an array of just the brand names for operations that require iteration
-// over the names themselves, such as in the title search strategy in the detector.
+// We also expose an array of just the brand names for operations that require it.
 const SUPPORTED_BRANDS_ARRAY = normalizedBrands.map(brand => brand.name);
 
-// Make the Map and the Array available on the global `window` object within the
-// content script's isolated world. This allows other injected scripts like `detector.js`
-// to access this data.
+// Making the Map and Array available to other scripts.
 if (typeof window !== 'undefined') {
   window.SUPPORTED_BRANDS_MAP = SUPPORTED_BRANDS_MAP;
   window.SUPPORTED_BRANDS_ARRAY = SUPPORTED_BRANDS_ARRAY;

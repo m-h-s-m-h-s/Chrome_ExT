@@ -2,33 +2,16 @@
  * @file src/background/main.js
  * @description The background service worker for the ChaChing Extension.
  *
- * @see {@link https://developer.chrome.com/docs/extensions/mv3/service_workers/}
+ * This script is the persistent "brain" of the extension. It is event-driven
+ * and handles tasks that are not tied to a specific webpage's lifecycle.
  *
- * @version 3.0.0
+ * Key Responsibilities:
+ * - Handling extension lifecycle events (onInstalled, onUpdated).
+ * - Storing tab-specific data (e.g., the detected brand).
+ * - Creating the right-click context menu.
+ * - Aggregating analytics events.
  *
- * **********************************************************************************
- *
- * This script is the central orchestrator for the entire extension.
- * It follows a modern, event-driven architecture. Instead of injecting content
- * scripts into every page via the manifest, this service worker listens for tab
- * updates and programmatically injects scripts only when necessary.
- *
- * ### Core Logic Flow:
- * 1.  **Listen for Navigation**: `chrome.tabs.onUpdated` fires when a user navigates.
- * 2.  **Filter and Validate**: It waits for the page to be 'complete' and checks against
- *     an exclusion list of domains (e.g., google.com) to avoid running on irrelevant pages.
- * 3.  **Inject Detector**: It injects the lightweight brand detection scripts (`detector.js`, etc.)
- *     into the active tab.
- * 4.  **Execute and Get Result**: It executes the `detectBrandOnPage()` function within the
- *     tab and gets the result back.
- * 5.  **Conditional UI Injection**: If, and only if, a supported brand is found, it then
- *     injects the UI scripts (`main.js`) and stylesheets (`styles.css`).
- *
- * This architecture is more performant, secure, and robust. It ensures that the
- * extension has a minimal footprint on non-shopping sites and allows it to reliably
- * place its UI on top of other page elements by injecting it last.
- *
- * **********************************************************************************
+ * @version 2.2.0
  */
 
 /**
@@ -36,15 +19,7 @@
  * @const {Object}
  */
 const CONFIG = {
-  /**
-   * A global flag to enable or disable analytics logging.
-   * @type {boolean}
-   */
-  ANALYTICS_ENABLED: true,
-  /**
-   * Defines the colors for the browser action badge.
-   * @type {Object}
-   */
+  ANALYTICS_ENABLED: true, // A global flag to enable or disable analytics logging.
   BADGE_COLORS: {
     DETECTED: '#4CAF50', // The color for the badge when a product is found.
     ERROR: '#F44336'    // A color for potential error states.
@@ -54,30 +29,27 @@ const CONFIG = {
 /**
  * A Map to store product detection data on a per-tab basis.
  * The key is the tab ID (number), and the value is the detection result object.
- * This is used to pass data to the popup when it opens and to decide if the UI
- * should be injected. Using a Map is efficient for frequent reads and writes.
+ * This is used to pass data to the popup when it opens.
  * @type {Map<number, Object>}
  */
 const detectedProducts = new Map();
 
 /**
  * A list of domains to exclude from script injection.
- * We avoid running on sites where the extension is not relevant (e.g., search engines,
- * social media) or on our own domain to prevent recursive behavior.
  * @const {string[]}
  */
 const EXCLUDED_DOMAINS = [
-  'chaching.me',      // The extension's own website.
-  'google.com',       // Google search and services.
-  'youtube.com',      // Video platform.
-  'facebook.com',     // Social media.
-  'twitter.com',      // Social media.
-  'linkedin.com',     // Professional networking.
-  'github.com',       // Code hosting.
-  'wikipedia.org',    // Encyclopedia.
-  'reddit.com',       // Forum.
-  'localhost',        // Local development.
-  '127.0.0.1'         // Local development.
+  'chaching.me',
+  'google.com',
+  'youtube.com',
+  'facebook.com',
+  'twitter.com',
+  'linkedin.com',
+  'github.com',
+  'wikipedia.org',
+  'reddit.com',
+  'localhost',
+  '127.0.0.1'
 ];
 
 /**
@@ -132,8 +104,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 /**
  * The central message listener for the extension. It handles all communication
- * from content scripts and the popup UI. With the new architecture, this is
- * primarily used for analytics and for the popup to retrieve data.
+ * from content scripts and the popup UI.
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Background] Message received:', { type: request.type, sender_tab: sender.tab?.id });
@@ -165,7 +136,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // We only want to run our logic when the page has finished loading.
-  // This prevents us from injecting scripts into a partially-loaded DOM.
   if (changeInfo.status !== 'complete' || !tab.url) {
     return;
   }
@@ -174,23 +144,18 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   try {
     const url = new URL(tab.url);
     if (EXCLUDED_DOMAINS.some(domain => url.hostname.includes(domain))) {
-      // Log for debugging but otherwise fail silently.
       console.log(`[Background] Skipping tab ${tabId} on excluded domain: ${url.hostname}`);
       return;
     }
   } catch (error) {
-    // This can happen for URLs like 'about:blank' or other internal pages.
     console.warn(`[Background] Could not parse URL, skipping: ${tab.url}`, error);
     return; // Invalid URL, do nothing.
   }
 
-  // Log that we're starting the detection process for this tab.
   console.log(`[Background] Tab ${tabId} updated to complete status. Running detector...`);
 
   try {
-    // Step 1: Inject the detection scripts into the page.
-    // These scripts are defined in manifest.json under `web_accessible_resources`.
-    // We inject them together to ensure they are all available for the next step.
+    // Step 1: Inject the detection scripts.
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: [
@@ -201,31 +166,22 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     });
 
     // Step 2: Run the detector on the page.
-    // We use `executeScript` again, but this time with a `function` property.
-    // This function is serialized, sent to the tab, and executed in the
-    // content script's isolated world. It has access to the DOM and the
-    // scripts we just injected.
     const injectionResults = await chrome.scripting.executeScript({
       target: { tabId: tabId },
       function: () => {
-        // This function is executed in the target tab's context.
+        // This function is executed in the content script context
         const detector = new ProductDetector();
-        // The return value of this function is sent back to our background script.
-        // It must be JSON-serializable.
         return detector.detectBrandOnPage();
       },
     });
 
-    // The result from the content script is wrapped in an array, one result per frame.
-    // Since we're targeting the main frame, we only need the first result.
+    // The result from the content script is wrapped in an array.
     const detectionResult = injectionResults[0].result;
 
-    // Step 3: Check the result and conditionally inject the UI.
     if (detectionResult && detectionResult.isSupported) {
       console.log(`[Background] Supported brand "${detectionResult.productInfo.brand}" found on tab ${tabId}. Injecting UI...`);
       
-      // Store the result for the popup. This allows the popup to display
-      // information about the detected brand without having to re-run detection.
+      // Store the result for the popup.
       detectedProducts.set(tabId, {
         ...detectionResult,
         detectedAt: new Date().toISOString(),
@@ -233,33 +189,27 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         domain: new URL(tab.url).hostname
       });
       
-      // Inject the stylesheet for the notification.
+      // Step 3: Inject the UI (CSS and main content script).
       await chrome.scripting.insertCSS({
         target: { tabId: tabId },
         files: ["src/content/styles.css"],
       });
 
-      // Inject the main UI script that creates and manages the notification.
       await chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ["src/content/main.js"],
       });
       
     } else {
-      // If no brand was found, we log it for debugging purposes.
       console.log(`[Background] No supported brand found on tab ${tabId}.`);
-      // It's also important to clear any old data for this tab. This handles
-      // cases where a user navigates from a product page to a non-product page
-      // on the same domain.
+      // Clear any old data for this tab if a brand is no longer detected.
       if (detectedProducts.has(tabId)) {
         detectedProducts.delete(tabId);
       }
     }
   } catch (error) {
-    // This catch block handles errors from the `chrome.scripting` APIs.
-    // This can happen if the page is a special Chrome page (e.g., chrome://),
-    // has strict Content Security Policies that block script injection,
-    // or if the tab was closed while we were trying to inject.
+    // This can happen if the page is a special Chrome page, has content security
+    // policies that block injection, or has already been invalidated.
     console.warn(`[Background] Could not inject scripts into tab ${tabId}:`, error.message);
   }
 });
@@ -356,8 +306,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 /**
  * A periodic task that runs to clean up any stale data from the `detectedProducts` Map.
  * This is a safeguard against memory leaks if the `onRemoved` or `onUpdated` tab
- * listeners were to fail for any reason. It checks every 5 minutes for data
- * older than 30 minutes.
+ * listeners were to fail for any reason.
  */
 setInterval(() => {
   const now = Date.now();

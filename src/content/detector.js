@@ -2,29 +2,12 @@
  * @file src/content/detector.js
  * @description The brand detection engine for the ChaChing Extension.
  *
- * @version 3.0.0
+ * This module uses a pure "voting" system to determine the most likely supported brand on a page.
+ * It finds all potential brand candidates using various robust strategies, then tallies "votes"
+ * for each of our officially supported brands based on how often they appear in the candidates.
+ * The supported brand with the most votes wins.
  *
- * **********************************************************************************
- *
- * This script is injected on-demand by the background script. Its purpose is to
- * analyze the DOM of a webpage and determine, with a reasonable degree of certainty,
- * which brand's product is being displayed.
- *
- * It uses a pure "voting" system to make its final decision:
- * 1.  **Gather Candidates**: It runs multiple independent "strategies" to find any
- *     and all text on the page that *could* be a brand name. This includes checking
- *     meta tags, structured data (JSON-LD), titles, breadcrumbs, and more.
- * 2.  **Tally Votes**: It then iterates through our official list of supported brands
- *     (from `brands.js`). For each supported brand, it checks how many of the
- *     candidates found on the page contain that brand's name.
- * 3.  **Declare Winner**: The supported brand with the most "votes" is declared the
- *     winner.
- *
- * This approach is robust because it doesn't rely on a single, fragile CSS selector.
- * Even if one strategy fails, the others can still provide enough evidence to
- * make a correct determination.
- *
- * **********************************************************************************
+ * @version 2.5.0
  */
 
 /**
@@ -35,11 +18,6 @@
  * @class ProductDetector
  */
 class ProductDetector {
-  /**
-   * Initializes the detector. Currently, the constructor is empty as the
-   * indicators and weights have been deprecated in favor of the voting system,
-   * but the class structure is kept for clarity and future expansion.
-   */
   constructor() {
     /**
      * A comprehensive dictionary of keywords, patterns, and selectors that serve as
@@ -131,11 +109,10 @@ class ProductDetector {
   }
 
   /**
-   * The main detection method. It orchestrates the brand discovery and voting process.
-   * This is the primary entry point called by the background script after injection.
+   * The main detection method. It orchestrates the brand discovery, voting, and validation.
    *
-   * @returns {Object|null} If a supported brand wins the vote, it returns a result object
-   * containing the brand's name, cashback, and the page title. Otherwise, it returns null.
+   * @returns {Object|null} If a supported brand wins the vote, it returns a result object, otherwise null.
+   * The result object includes `isSupported`, and `productInfo` which contains the `brand`, `title`, and `cashback`.
    */
   detectBrandOnPage() {
     ChachingUtils.log('info', 'Detector', 'Starting brand detection...');
@@ -165,8 +142,7 @@ class ProductDetector {
   
   /**
    * Aggregates all potential brand candidates from a product detail page using multiple strategies.
-   * This function's sole purpose is to gather as much evidence as possible. Each strategy
-   * adds potential brand names to the `candidates` array.
+   * This function's sole purpose is to gather as much evidence as possible.
    *
    * @returns {string[]} An array of all found brand name candidates, including duplicates.
    */
@@ -174,21 +150,16 @@ class ProductDetector {
     let candidates = [];
 
     // Strategy 1: Structured Data (JSON-LD)
-    // This is often the most reliable source if present. We look for a <script> tag
-    // with type "application/ld+json" and parse it to find a `brand` property.
     const structuredDataScript = document.querySelector('script[type="application/ld+json"]');
     if (structuredDataScript) {
         try {
             const data = JSON.parse(structuredDataScript.textContent);
             const brand = data.brand?.name || data.brand;
             if (typeof brand === 'string' && brand.trim()) candidates.push(brand.trim());
-        } catch (e) { /* Ignore parsing errors, as the JSON may be malformed. */ }
+        } catch (e) { /* Ignore */ }
     }
 
-    // Strategy 2: Page Title Search
-    // We iterate through our list of supported brands and check if any of them
-    // appear in the product title. We use a regex with word boundaries (\\b)
-    // to ensure we match whole words only (e.g., "levis" not "levinson").
+    // Strategy 2: Title Search (Using word boundaries for accuracy)
     const productTitle = this.extractProductTitle();
     if (productTitle) {
       const lowerCaseTitle = productTitle.toLowerCase();
@@ -209,22 +180,17 @@ class ProductDetector {
     }
 
     // Strategy 3: Open Graph Meta Tags
-    // Social sharing meta tags like `og:brand` or `product:brand` are strong indicators.
     const ogBrandElement = document.querySelector('meta[property="product:brand"], meta[property="og:brand"]');
     if (ogBrandElement && ogBrandElement.content) candidates.push(ogBrandElement.content.trim());
 
-    // Strategy 4: Semantic HTML Attributes
-    // We check for common HTML5 microdata attributes (`itemprop`) and other
-    // `data-*` attributes or class names that are commonly used for brands.
+    // Strategy 4: Semantic HTML - Check for common data attributes and class names.
     const brandSelectors = ['[itemprop="brand"] [itemprop="name"]', '[itemprop="brand"]', '[data-product-brand]', '.product-brand', '[class*="brand-name"]'];
     for (const selector of brandSelectors) {
       const element = document.querySelector(selector);
       if (element && element.innerText?.trim()) candidates.push(element.innerText.trim());
     }
 
-    // Strategy 5: Visible Key-Value Pairs
-    // Look for text elements (like <span> or <th>) that contain the word "Brand"
-    // and then try to extract the text from the element that follows.
+    // Strategy 5: Look for visible key-value pairs (e.g., "Brand: Nike").
     const potentialLabels = document.querySelectorAll('span, dt, th, b, strong');
     for (const label of potentialLabels) {
         if (label.innerText?.trim().toLowerCase().startsWith('brand')) {
@@ -236,9 +202,7 @@ class ProductDetector {
         }
     }
 
-    // Strategy 6: Breadcrumbs
-    // The second-to-last item in a breadcrumb trail is often the brand or category,
-    // which can be a useful signal.
+    // Strategy 6: Breadcrumbs - The second-to-last item is often the brand.
     const breadcrumbItems = document.querySelectorAll('[class*="breadcrumb"] a');
     if (breadcrumbItems.length > 1) {
       const brandCandidate = breadcrumbItems[breadcrumbItems.length - 2].innerText.trim();
@@ -248,12 +212,10 @@ class ProductDetector {
     }
 
     // Strategy 7: Open Graph Site Name
-    // The `og:site_name` can sometimes be the brand name itself, especially on brand homepages.
     const ogSiteName = document.querySelector('meta[property="og:site_name"]');
     if (ogSiteName && ogSiteName.content) candidates.push(ogSiteName.content.trim());
     
-    // Strategy 8: Domain Name Extraction
-    // As a final fallback, the domain name itself can be a strong clue (e.g., nike.com).
+    // Strategy 8: Domain Name (Robust Extraction)
     const domain = this.extractMainDomain(window.location.hostname);
     if (domain) {
         candidates.push(domain);
@@ -266,7 +228,7 @@ class ProductDetector {
 
   /**
    * Extracts the main part of a domain name, ignoring subdomains and TLDs.
-   * e.g., 'www.levi.co.uk' becomes 'levi'. This helps normalize domain-based candidates.
+   * e.g., 'www.levi.co.uk' becomes 'levi'.
    *
    * @param {string} hostname - The full hostname from the URL.
    * @returns {string|null} The extracted main domain name.
@@ -292,16 +254,13 @@ class ProductDetector {
   determineBestBrandByVotes(candidates) {
     if (!candidates || candidates.length === 0) return null;
 
-    // Use a Map to store the vote count for each of our supported brands.
     const voteCounts = new Map();
 
     // For each of our officially supported brands, count how many times it appears
     // within the candidates gathered from the page.
     for (const supportedBrandName of SUPPORTED_BRANDS_MAP.keys()) {
       candidates.forEach(candidate => {
-        // We normalize both the candidate and the brand name to ensure a
-        // case-insensitive and clean comparison.
-        // e.g., check if the candidate "Levi's® Premium" includes "levis".
+        // e.g., check if the candidate "Levi's® Premium" includes the supported brand "levis".
         if (normalizeBrand(candidate).includes(supportedBrandName)) {
           // If it does, cast a vote for that SUPPORTED brand.
           voteCounts.set(supportedBrandName, (voteCounts.get(supportedBrandName) || 0) + 1);
@@ -326,7 +285,7 @@ class ProductDetector {
     
     if (winningBrandName) {
       ChachingUtils.log('info', 'Detector', `Votes tallied. Winning brand is "${winningBrandName}" with ${maxVotes} votes.`);
-      // Return the full brand object from the map, which includes the cashback level.
+      // Return the full brand object from the map.
       return SUPPORTED_BRANDS_MAP.get(winningBrandName);
     }
 
