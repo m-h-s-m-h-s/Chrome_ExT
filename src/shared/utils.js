@@ -1,229 +1,116 @@
 /**
- * utils.js - Utility functions for the Chaching Product Searcher Extension
- * 
- * This module provides common utility functions used throughout the extension
- * for text processing, URL generation, and data validation.
- * 
- * @module utils
- * @author Chaching Product Searcher Extension
- * @version 1.0.0
+ * @file src/shared/utils.js
+ * @description A collection of shared utility functions used across the extension.
+ *
+ * @version 3.0.0
+ *
+ * These helpers are injected into the content script context and are available
+ * to other scripts like the detector and the main UI script.
  */
 
 /**
- * Configuration object containing extension settings and constants
- * @const {Object} CONFIG
+ * A namespace for our utility functions to avoid polluting the global scope.
+ * While the content scripts run in an isolated world, this is still good practice.
+ * @namespace ChachingUtils
  */
-const CONFIG = {
-  CHACHING_BASE_URL: 'https://chaching.me/us/search',
-  NOTIFICATION_DURATION: 5000,
-  DEBOUNCE_DELAY: 300,
-  MAX_TITLE_LENGTH: 200,
-  MIN_TITLE_LENGTH: 3
+const ChachingUtils = {
+  /**
+   * Normalizes a brand name for consistent, case-insensitive matching.
+   * This is a critical function for the accuracy of the detection engine.
+   *
+   * - Converts the string to lowercase.
+   * - Removes common special characters and trademarks (e.g., ®, ™, ©).
+   * - Trims leading/trailing whitespace.
+   *
+   * @param {string} brandName - The raw brand name to be normalized.
+   * @returns {string} The normalized brand name.
+   */
+  normalizeBrand(brandName) {
+    if (!brandName) return '';
+    return brandName
+      .toLowerCase()
+      .replace(/®|™|©/g, '') // Remove trademark symbols
+      .trim();
+  },
+
+  /**
+   * A simple, standardized logger to prefix all console messages from this extension.
+   * This makes it much easier to filter for our extension's logs in the DevTools console.
+   *
+   * @param {'info' | 'warn' | 'error'} level - The log level.
+   * @param {string} component - The name of the component logging the message (e.g., 'ContentScript', 'Detector').
+   * @param {string} message - The main log message.
+   * @param {...any} [optionalParams] - Additional data to log with the message.
+   */
+  log(level, component, message, ...optionalParams) {
+    const logPrefix = `[ChaChing][${component}]`;
+    const styles = {
+      info: 'background: #222; color: #bada55',
+      warn: 'background: #ffc107; color: #000',
+      error: 'background: #dc3545; color: #fff',
+    };
+
+    console[level](`%c${logPrefix}`, styles[level] || styles.info, message, ...optionalParams);
+  },
+
+  /**
+   * Extracts the domain name from a full URL.
+   * e.g., "https://www.example.co.uk/page" becomes "example.co.uk".
+   *
+   * @param {string} url - The full URL.
+   * @returns {string} The extracted domain name.
+   */
+  extractDomain(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch (error) {
+      this.log('error', 'Utils', `Failed to extract domain from URL: ${url}`, error);
+      return '';
+    }
+  },
+
+  /**
+   * Generates the search URL for chaching.me based on a search query.
+   *
+   * @param {string} query - The search term (e.g., brand or product title).
+   * @returns {string} The full chaching.me search URL.
+   */
+  generateChachingUrl(query) {
+    // URL-encode the query to handle special characters and spaces.
+    const encodedQuery = encodeURIComponent(query);
+    return `https://chaching.me/us/search?query=${encodedQuery}&source=extension`;
+  },
+
+  /**
+   * A debounce function that limits the rate at which a function can be called.
+   * The function will only be executed after it has not been called for `delay`
+   * milliseconds. This is useful for performance-intensive tasks that might be
+   * triggered rapidly, such as responding to window resizing or scroll events.
+   *
+   * @param {Function} func - The function to debounce.
+   * @param {number} delay - The debounce delay in milliseconds.
+   * @returns {Function} The debounced function.
+   */
+  debounce(func, delay) {
+    let timeoutId;
+    return function(...args) {
+      // `this` and `args` are captured and applied to the original function.
+      const context = this;
+      // Clear the previous timeout to reset the timer.
+      clearTimeout(timeoutId);
+      // Set a new timeout.
+      timeoutId = setTimeout(() => {
+        func.apply(context, args);
+      }, delay);
+    };
+  }
 };
 
 /**
- * Sanitizes a product title for use in URL parameters
- * Removes special characters, extra spaces, and converts spaces to plus signs
- * 
- * @param {string} title - The raw product title to sanitize
- * @returns {string} The sanitized title suitable for URL parameters
- * 
- * @example
- * sanitizeProductTitle("Apple iPhone 14 Pro - 128GB") 
- * // Returns: "Apple+iPhone+14+Pro+128GB"
+ * Attaches the ChachingUtils namespace to the global `window` object.
+ * This makes the utility functions accessible to all other scripts injected
+ * into the same content script context.
  */
-function sanitizeProductTitle(title) {
-  if (!title || typeof title !== 'string') {
-    console.warn('[Utils] Invalid title provided to sanitizeProductTitle:', title);
-    return '';
-  }
-
-  return title
-    // Remove HTML tags if any
-    .replace(/<[^>]*>/g, '')
-    // Keep apostrophes for product names like '07, but remove other special chars
-    .replace(/[^\w\s\-\.']/g, ' ')
-    // Replace multiple spaces with single space
-    .replace(/\s+/g, ' ')
-    // Trim whitespace from ends
-    .trim()
-    // Replace spaces with plus signs
-    .replace(/\s/g, '+');
-}
-
-/**
- * Generates a Chaching search URL for a given product title
- * 
- * @param {string} productTitle - The product title to search for
- * @returns {string} The complete Chaching search URL
- * 
- * @example
- * generateChachingUrl("Nike Air Max 90")
- * // Returns: "https://chaching.me/us/search?query=Nike+Air+Max+90"
- */
-function generateChachingUrl(productTitle) {
-  const sanitizedTitle = sanitizeProductTitle(productTitle);
-  
-  if (!sanitizedTitle) {
-    console.error('[Utils] Failed to generate URL: Invalid product title');
-    return CONFIG.CHACHING_BASE_URL;
-  }
-
-  // Don't encode the query - let the browser handle it naturally
-  // This preserves the + signs in the URL
-  return `${CONFIG.CHACHING_BASE_URL}?query=${sanitizedTitle}`;
-}
-
-/**
- * Validates if a string is a valid product title
- * 
- * @param {string} title - The title to validate
- * @returns {boolean} True if the title is valid, false otherwise
- */
-function isValidProductTitle(title) {
-  if (!title || typeof title !== 'string') {
-    return false;
-  }
-
-  const trimmedTitle = title.trim();
-  return trimmedTitle.length >= CONFIG.MIN_TITLE_LENGTH && 
-         trimmedTitle.length <= CONFIG.MAX_TITLE_LENGTH;
-}
-
-/**
- * Debounces a function to prevent excessive calls
- * 
- * @param {Function} func - The function to debounce
- * @param {number} delay - The delay in milliseconds
- * @returns {Function} The debounced function
- */
-function debounce(func, delay = CONFIG.DEBOUNCE_DELAY) {
-  let timeoutId;
-  
-  return function debounced(...args) {
-    const context = this;
-    
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => {
-      func.apply(context, args);
-    }, delay);
-  };
-}
-
-/**
- * Extracts domain name from a URL
- * 
- * @param {string} url - The URL to extract domain from
- * @returns {string} The domain name or empty string if invalid
- * 
- * @example
- * extractDomain("https://www.amazon.com/product/123")
- * // Returns: "amazon"
- */
-function extractDomain(url) {
-  try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname;
-    
-    // Remove www. prefix if present
-    const domain = hostname.replace(/^www\./, '');
-    
-    // Extract the main domain name (e.g., "amazon" from "amazon.com")
-    const parts = domain.split('.');
-    return parts.length > 1 ? parts[parts.length - 2] : parts[0];
-  } catch (error) {
-    console.error('[Utils] Failed to extract domain:', error);
-    return '';
-  }
-}
-
-/**
- * Logs a message with consistent formatting
- * 
- * @param {string} level - Log level (info, warn, error)
- * @param {string} module - Module name
- * @param {string} message - Log message
- * @param {*} [data] - Optional data to log
- */
-function log(level, module, message, data) {
-  const timestamp = new Date().toISOString();
-  const prefix = `[${timestamp}] [${module}]`;
-  
-  switch (level) {
-    case 'info':
-      console.log(`${prefix} ${message}`, data || '');
-      break;
-    case 'warn':
-      console.warn(`${prefix} ${message}`, data || '');
-      break;
-    case 'error':
-      console.error(`${prefix} ${message}`, data || '');
-      break;
-    default:
-      console.log(`${prefix} ${message}`, data || '');
-  }
-}
-
-/**
- * Creates a throttled version of a function
- * 
- * @param {Function} func - The function to throttle
- * @param {number} limit - Time limit in milliseconds
- * @returns {Function} The throttled function
- */
-function throttle(func, limit) {
-  let inThrottle;
-  let lastResult;
-  
-  return function throttled(...args) {
-    const context = this;
-    
-    if (!inThrottle) {
-      inThrottle = true;
-      lastResult = func.apply(context, args);
-      
-      setTimeout(() => {
-        inThrottle = false;
-      }, limit);
-    }
-    
-    return lastResult;
-  };
-}
-
-/**
- * Normalizes a brand name for consistent, case-insensitive comparison.
- * It converts the string to lowercase and removes all common special characters,
- * symbols, and whitespace to create a canonical key for matching.
- * e.g., "Levi's®", "levi-strauss", and "Levi Strauss" would all be normalized
- * to a similar base for comparison.
- *
- * @param {string} brandName - The raw brand name.
- * @returns {string} The normalized brand name.
- */
-function normalizeBrand(brandName) {
-  if (!brandName || typeof brandName !== 'string') return '';
-  return brandName
-    .toLowerCase()
-    // Remove common symbols and punctuation.
-    .replace(/[''®™&©\-\.,]/g, '')
-    // Remove all whitespace.
-    .replace(/\s+/g, '')
-    .trim();
-}
-
-// Export functions for use in other modules
-// Note: In Chrome extensions, we'll use these as global functions
 if (typeof window !== 'undefined') {
-  window.ChachingUtils = {
-    CONFIG,
-    sanitizeProductTitle,
-    generateChachingUrl,
-    isValidProductTitle,
-    debounce,
-    throttle,
-    extractDomain,
-    log,
-    normalizeBrand
-  };
+  window.ChachingUtils = ChachingUtils;
 } 

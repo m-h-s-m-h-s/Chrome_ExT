@@ -183,9 +183,13 @@ class ChachingContentScript {
     // Create notification element
     const notification = this.createNotificationElement();
 
+    // Dynamically set the z-index to be the highest on the page. We run this
+    // as a function because we will need to re-run it later if other elements
+    // are added to the DOM.
     const setZIndex = (nodes) => {
       const highestZ = this.getHighestZIndex(nodes);
-      // Ensure we don't accidentally lower our z-index if it's already high
+      // Ensure we don't accidentally lower our z-index if it's already high.
+      // This can happen if the mutation observer triggers on a trivial element.
       const currentZ = parseInt(notification.style.zIndex, 10) || 0;
       if (highestZ + 1 > currentZ) {
         notification.style.zIndex = highestZ + 1;
@@ -193,40 +197,49 @@ class ChachingContentScript {
       }
     };
 
-    // Set z-index immediately on creation
+    // Set z-index immediately when the notification is first created.
     setZIndex();
     
     // Add to page
     document.body.appendChild(notification);
     this.notificationShown = true;
 
-    // Animate in
+    // Animate in by adding the 'chaching-show' class after a short delay,
+    // allowing the element to be rendered first.
     setTimeout(() => {
       notification.classList.add('chaching-show');
     }, 100);
 
-    // Re-check z-index after short delays to win wars against late-loading scripts.
-    setTimeout(setZIndex, 500);
-    setTimeout(setZIndex, 1500);
+    // Re-check z-index after short delays to win "z-index wars" against other
+    // extensions that might load their UI after ours.
+    setTimeout(() => setZIndex(), 500);
+    setTimeout(() => setZIndex(), 1500);
 
-    // Use a MutationObserver to watch for other elements being added to the page
-    // and re-assert our z-index if needed.
+    // Use a MutationObserver to watch for other elements being added to the page.
+    // This is the most robust way to ensure our notification stays on top.
+    // If another extension injects a banner, this observer will see it and
+    // trigger our `setZIndex` function again.
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        // We only care about `childList` changes where nodes are added.
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
           // A new node was added. Let's check its z-index and its children's.
+          // We add a small delay to allow the new element to be fully rendered.
           setTimeout(() => setZIndex(mutation.addedNodes), 100);
-          return; // No need to check other mutations in this batch
+          return; // No need to check other mutations in this batch.
         }
       }
     });
 
+    // Start observing the entire body and all its descendants for changes.
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Store the observer on the notification element so we can disconnect it later
+    // Store the observer on the notification element itself so we can easily
+    // find it and disconnect it when the notification is hidden.
     notification.chachingObserver = observer;
 
-    // NO AUTO-HIDE - notification stays until dismissed
+    // The notification is persistent and will not hide automatically.
+    // It must be dismissed by the user.
   }
 
   /**
@@ -283,43 +296,59 @@ class ChachingContentScript {
 
   /**
    * Finds the highest z-index on the page to ensure the notification is on top.
-   * This now recursively searches inside Shadow DOMs.
+   * This is the core of our "z-index war" strategy.
+   * It recursively searches the DOM, including open Shadow DOMs, for the highest
+   * `z-index` value.
+   * @param {NodeList} [nodes] - An optional list of nodes to check. If provided,
+   * it will check these specific nodes and their children. Used by the MutationObserver.
    * @returns {number} The highest z-index found.
    */
   getHighestZIndex(nodes) {
     let highestIndex = 0;
 
+    // If a specific set of nodes is passed (from the MutationObserver), use that.
+    // Otherwise, query the entire document.
     const elements = nodes || document.querySelectorAll('*');
 
-    // Recursive function to find the max z-index in a node tree (including shadow DOMs)
+    // Recursive function to find the max z-index in a node tree.
     const findHighestZ = (nodeList) => {
       for (const element of nodeList) {
+        // We only care about element nodes, not text nodes, comments, etc.
         if (element.nodeType !== Node.ELEMENT_NODE) {
           continue;
         }
         
-        // Skip our own notification elements to avoid an infinite loop
+        // Skip our own notification elements to avoid an infinite loop where
+        // we keep raising our own z-index.
         if (element.classList && element.classList.contains('chaching-notification')) {
           continue;
         }
 
+        // Get the computed style of the element. This is more reliable than
+        // checking inline styles, as it includes styles from stylesheets.
         const style = window.getComputedStyle(element);
         const zIndex = parseInt(style.zIndex, 10);
         
+        // If the element has a higher z-index, update our max value.
         if (zIndex > highestIndex) {
           highestIndex = zIndex;
         }
         
-        // If the element has a shadow root, and it's open, recursively search inside it
+        // If the element has a shadow root, and it's 'open', we can look inside it.
+        // We cannot access 'closed' shadow roots from the outside, but by checking
+        // the z-index of the host element itself, we can still win.
         if (element.shadowRoot && element.shadowRoot.mode === 'open') {
           findHighestZ(element.shadowRoot.querySelectorAll('*'));
         }
       }
     };
 
+    // Start the search.
     findHighestZ(elements);
     
-    // If no z-index is found, default to a very high number as a safety net.
+    // As a final safety net, ensure our z-index is at least a very high number.
+    // This protects against cases where no other z-indexes are found but another
+    // extension might still use a high default value.
     return Math.max(highestIndex, 2147483640);
   }
 
@@ -341,7 +370,9 @@ class ChachingContentScript {
    * @param {HTMLElement} notification - The notification element to be removed.
    */
   hideNotification(notification) {
-    // Disconnect the observer to prevent memory leaks when the notification is hidden.
+    // It's crucial to disconnect the MutationObserver when the notification is hidden.
+    // If we don't, it will continue to watch for DOM changes in the background,
+    // which can lead to memory leaks.
     if (notification.chachingObserver) {
       notification.chachingObserver.disconnect();
     }
@@ -513,7 +544,9 @@ class ChachingContentScript {
   }
 }
 
-// Initialize the content script when the extension loads
+// Initialize the content script automatically when it's injected.
+// We also check if an instance already exists to prevent multiple copies
+// from running if the background script were to ever inject it twice.
 if (typeof window !== 'undefined' && !window.chachingContentScript) {
   window.chachingContentScript = new ChachingContentScript();
 } 

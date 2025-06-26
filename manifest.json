@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Chaching Product Searcher",
-  "version": "2.0.0",
-  "description": "Find the best cashback deals on chaching.me for any product you're viewing",
+  "name": "ChaChing Browser Extension",
+  "version": "3.0.0",
+  "description": "Find the best Cash Back deals from ChaChing so you don't lose out no matter where you shop online.",
   "permissions": [
     "activeTab",
     "storage",
