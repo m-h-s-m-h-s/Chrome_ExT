@@ -111,7 +111,8 @@ class ProductDetector {
   /**
    * The main detection method. It orchestrates the brand discovery, voting, and validation.
    *
-   * @returns {Object|null} If a supported brand wins the vote, it returns a result object. Otherwise, null.
+   * @returns {Object|null} If a supported brand wins the vote, it returns a result object, otherwise null.
+   * The result object includes `isSupported`, and `productInfo` which contains the `brand`, `title`, and `cashback`.
    */
   detectBrandOnPage() {
     ChachingUtils.log('info', 'Detector', 'Starting brand detection...');
@@ -122,12 +123,16 @@ class ProductDetector {
     const bestBrand = this.determineBestBrandByVotes(candidates);
     
     if (bestBrand) {
-      // The winner is guaranteed to be a clean, supported brand name from our list.
-      ChachingUtils.log('info', 'Detector', `SUCCESS: Determined best brand is "${bestBrand}".`);
+      // The winner is now the full brand object from our map.
+      ChachingUtils.log('info', 'Detector', `SUCCESS: Determined best brand is "${bestBrand.name}".`);
       const title = this.extractProductTitle();
       return {
         isSupported: true,
-        productInfo: { brand: bestBrand, title: title } // Return the clean brand name.
+        productInfo: { 
+          brand: bestBrand.name, 
+          title: title,
+          cashback: bestBrand.cashback // Pass cashback level
+        }
       };
     }
     
@@ -244,7 +249,7 @@ class ProductDetector {
    * within a list of candidates found on the page.
    *
    * @param {string[]} candidates - An array of potential brand names found on the page.
-   * @returns {string|null} The winning brand name from our supported list, or null.
+   * @returns {Object|null} The winning brand object (including name and cashback) from our supported list, or null.
    */
   determineBestBrandByVotes(candidates) {
     if (!candidates || candidates.length === 0) return null;
@@ -253,15 +258,15 @@ class ProductDetector {
 
     // For each of our officially supported brands, count how many times it appears
     // within the candidates gathered from the page.
-    SUPPORTED_BRANDS_ARRAY.forEach(supportedBrand => {
+    for (const supportedBrandName of SUPPORTED_BRANDS_MAP.keys()) {
       candidates.forEach(candidate => {
         // e.g., check if the candidate "Levi's® Premium" includes the supported brand "levis".
-        if (normalizeBrand(candidate).includes(supportedBrand)) {
+        if (normalizeBrand(candidate).includes(supportedBrandName)) {
           // If it does, cast a vote for that SUPPORTED brand.
-          voteCounts.set(supportedBrand, (voteCounts.get(supportedBrand) || 0) + 1);
+          voteCounts.set(supportedBrandName, (voteCounts.get(supportedBrandName) || 0) + 1);
         }
       });
-    });
+    }
 
     if (voteCounts.size === 0) {
       ChachingUtils.log('info', 'Detector', 'No supported brands were found within any of the page candidates.');
@@ -270,16 +275,21 @@ class ProductDetector {
 
     // Find the supported brand that received the most votes.
     let maxVotes = 0;
-    let winningBrand = null;
-    for (const [brand, votes] of voteCounts.entries()) {
+    let winningBrandName = null;
+    for (const [brandName, votes] of voteCounts.entries()) {
       if (votes > maxVotes) {
         maxVotes = votes;
-        winningBrand = brand;
+        winningBrandName = brandName;
       }
     }
     
-    ChachingUtils.log('info', 'Detector', `Votes tallied. Winning brand is "${winningBrand}" with ${maxVotes} votes.`);
-    return winningBrand;
+    if (winningBrandName) {
+      ChachingUtils.log('info', 'Detector', `Votes tallied. Winning brand is "${winningBrandName}" with ${maxVotes} votes.`);
+      // Return the full brand object from the map.
+      return SUPPORTED_BRANDS_MAP.get(winningBrandName);
+    }
+
+    return null;
   }
 
   /**

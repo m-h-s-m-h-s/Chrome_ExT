@@ -4,7 +4,7 @@
  *
  * This script is injected into product detail pages and is responsible for:
  * 1.  Orchestrating the brand detection by running the ProductDetector.
- * 2.  Managing the state and display of the on-page notification UI.
+ * 2.  Managing the state and display of the on-page notification UI, including dynamic cashback info.
  * 3.  Communicating with the background script to log events.
  * 4.  Handling dynamic page changes in Single-Page Applications (SPAs).
  *
@@ -197,6 +197,7 @@ class ChachingContentScript {
 
   /**
    * Creates the HTML structure for the notification element.
+   * This now dynamically inserts the brand name and cashback percentage.
    *
    * @returns {HTMLElement} The fully-formed, but not-yet-inserted, notification element.
    */
@@ -208,6 +209,7 @@ class ChachingContentScript {
     const brandName = this.detectionResult?.productInfo?.brand || 'top brands';
     // For display purposes only, capitalize the first letter of the brand name.
     const displayBrandName = brandName.charAt(0).toUpperCase() + brandName.slice(1);
+    const cashbackLevel = this.detectionResult?.productInfo?.cashback;
 
     notification.innerHTML = `
       <button class="chaching-btn chaching-btn-secondary" id="chaching-close">✕</button>
@@ -216,7 +218,7 @@ class ChachingContentScript {
           <img src="${chrome.runtime.getURL('src/assets/ChaChing_Logo.png')}" alt="ChaChing Logo" />
         </div>
         <div class="chaching-text">
-          <div class="chaching-title">Up to 32% Cash Back - Fast, Reliable, Big</div>
+          <div class="chaching-title">Up to ${cashbackLevel}% Cash Back - Big, Fast, Reliable</div>
           <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY</div>
           <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back.</div>
         </div>
