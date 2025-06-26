@@ -23,14 +23,14 @@ const CONFIG = {
 
 /**
  * Sanitizes a product title for use in URL parameters
- * Removes special characters, extra spaces, and converts spaces to dashes
+ * Removes special characters, extra spaces, and converts spaces to plus signs
  * 
  * @param {string} title - The raw product title to sanitize
  * @returns {string} The sanitized title suitable for URL parameters
  * 
  * @example
  * sanitizeProductTitle("Apple iPhone 14 Pro - 128GB") 
- * // Returns: "Apple-iPhone-14-Pro-128GB"
+ * // Returns: "Apple+iPhone+14+Pro+128GB"
  */
 function sanitizeProductTitle(title) {
   if (!title || typeof title !== 'string') {
@@ -41,18 +41,14 @@ function sanitizeProductTitle(title) {
   return title
     // Remove HTML tags if any
     .replace(/<[^>]*>/g, '')
-    // Remove special characters except spaces, letters, numbers, and basic punctuation
-    .replace(/[^\w\s\-\.]/g, ' ')
+    // Keep apostrophes for product names like '07, but remove other special chars
+    .replace(/[^\w\s\-\.']/g, ' ')
     // Replace multiple spaces with single space
     .replace(/\s+/g, ' ')
     // Trim whitespace from ends
     .trim()
-    // Replace spaces with dashes
-    .replace(/\s/g, '-')
-    // Remove multiple consecutive dashes
-    .replace(/-+/g, '-')
-    // Remove dashes from start and end
-    .replace(/^-+|-+$/g, '');
+    // Replace spaces with plus signs
+    .replace(/\s/g, '+');
 }
 
 /**
@@ -63,7 +59,7 @@ function sanitizeProductTitle(title) {
  * 
  * @example
  * generateChachingUrl("Nike Air Max 90")
- * // Returns: "https://chaching.me/us/search?query=Nike-Air-Max-90"
+ * // Returns: "https://chaching.me/us/search?query=Nike+Air+Max+90"
  */
 function generateChachingUrl(productTitle) {
   const sanitizedTitle = sanitizeProductTitle(productTitle);
@@ -73,7 +69,9 @@ function generateChachingUrl(productTitle) {
     return CONFIG.CHACHING_BASE_URL;
   }
 
-  return `${CONFIG.CHACHING_BASE_URL}?query=${encodeURIComponent(sanitizedTitle)}`;
+  // Don't encode the query - let the browser handle it naturally
+  // This preserves the + signs in the URL
+  return `${CONFIG.CHACHING_BASE_URL}?query=${sanitizedTitle}`;
 }
 
 /**
@@ -193,6 +191,27 @@ function throttle(func, limit) {
   };
 }
 
+/**
+ * Normalizes a brand name for consistent, case-insensitive comparison.
+ * It converts the string to lowercase and removes all common special characters,
+ * symbols, and whitespace to create a canonical key for matching.
+ * e.g., "Levi's®", "levi-strauss", and "Levi Strauss" would all be normalized
+ * to a similar base for comparison.
+ *
+ * @param {string} brandName - The raw brand name.
+ * @returns {string} The normalized brand name.
+ */
+function normalizeBrand(brandName) {
+  if (!brandName || typeof brandName !== 'string') return '';
+  return brandName
+    .toLowerCase()
+    // Remove common symbols and punctuation.
+    .replace(/[''®™&©\-\.,]/g, '')
+    // Remove all whitespace.
+    .replace(/\s+/g, '')
+    .trim();
+}
+
 // Export functions for use in other modules
 // Note: In Chrome extensions, we'll use these as global functions
 if (typeof window !== 'undefined') {
@@ -204,6 +223,7 @@ if (typeof window !== 'undefined') {
     debounce,
     throttle,
     extractDomain,
-    log
+    log,
+    normalizeBrand
   };
 } 

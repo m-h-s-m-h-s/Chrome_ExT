@@ -1,4 +1,15 @@
 /**
+ * @file src/popup/main.js
+ * @description The logic for the extension's popup UI.
+ *
+ * This script manages the state of the popup, handles user interactions
+ * (like manual searches or toggling settings), and communicates with the
+ * content and background scripts.
+ *
+ * @version 2.2.0
+ */
+
+/**
  * popup.js - Popup interface logic for Chaching Product Searcher
  * 
  * Manages the popup UI state, handles user interactions, and communicates
@@ -354,12 +365,13 @@ class PopupController {
    */
   generateChachingUrl(query) {
     const sanitized = query
-      .replace(/[^\w\s\-\.]/g, ' ')
+      .replace(/[^\w\s\-\.']/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-      .replace(/\s/g, '-');
+      .replace(/\s/g, '+');
     
-    return `https://chaching.me/us/search?query=${encodeURIComponent(sanitized)}`;
+    // Don't encode - let browser handle it to preserve + signs
+    return `https://chaching.me/us/search?query=${sanitized}`;
   }
 
   /**

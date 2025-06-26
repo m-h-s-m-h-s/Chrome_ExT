@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chaching Product Searcher",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Find the best cashback deals on chaching.me for any product you're viewing",
   "permissions": [
     "activeTab",
@@ -13,16 +13,16 @@
     "http://*/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background/main.js"
   },
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Find cashback deals on Chaching",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_popup": "src/popup/index.html",
+    "default_title": "Find cashback deals on Chaching"
+  },
+  "icons": {
+    "16": "src/assets/ChaChing_Logo.png",
+    "48": "src/assets/ChaChing_Logo.png",
+    "128": "src/assets/ChaChing_Logo.png"
   },
   "content_scripts": [
     {
@@ -31,6 +31,8 @@
         "http://*/*"
       ],
       "exclude_matches": [
+        "*://*.chaching.me/*",
+        "*://chaching.me/*",
         "*://*.google.com/*",
         "*://*.youtube.com/*",
         "*://*.facebook.com/*",
@@ -43,17 +45,20 @@
         "*://127.0.0.1/*"
       ],
       "js": [
-        "js/utils.js",
-        "js/product-detector.js",
-        "js/content.js"
+        "src/shared/utils.js",
+        "src/content/brands.js",
+        "src/content/detector.js",
+        "src/content/main.js"
       ],
-      "css": ["css/content.css"],
+      "css": ["src/content/styles.css"],
       "run_at": "document_idle"
     }
   ],
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+
+  "web_accessible_resources": [
+    {
+      "resources": ["src/assets/ChaChing_Logo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 } 

@@ -1,0 +1,273 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+/**
+ * @file src/content/styles.css
+ * @description Styles for the ChaChing brand notification.
+ * @version 2.0.0
+ */
+
+/* Main notification container - Restyled for the new brand */
+.chaching-notification {
+  /* Positioning */
+  position: fixed;
+  top: 30px;
+  right: 30px;
+  width: 500px;
+  min-height: 180px;
+  z-index: 999999;
+  
+  /* Brand Appearance */
+  background: #F2F3F4; /* Off White */
+  border-radius: 16px;
+  border: 3px solid #F9F27F; /* Noticeable Yellow Accent Border */
+  box-shadow: 0 8px 32px rgba(2, 38, 107, 0.15); /* Subtle shadow using dark blue */
+  
+  /* Typography */
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* Animation */
+  transform: translateY(-120%);
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); /* Smoother animation */
+  overflow: hidden;
+}
+
+/* Show/Hide Animations */
+.chaching-notification.chaching-show {
+  transform: translateY(0);
+  opacity: 1;
+}
+.chaching-notification.chaching-hide {
+  transform: translateY(-120%);
+  opacity: 0;
+  transition: all 0.2s ease-in;
+}
+
+/* Content Wrapper - Updated for better alignment and spacing */
+.chaching-notification-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* This will push the button to the right */
+  padding: 24px;
+  gap: 20px;
+}
+
+/* --- Component Styling --- */
+
+/* Icon */
+.chaching-icon {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #02266B; /* Changed to Dark Blue for better contrast */
+  border-radius: 50%;
+  animation: pulse 2.5s infinite;
+  overflow: hidden;
+}
+.chaching-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chaching-icon svg {
+  width: 32px;
+  height: 32px;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(2, 38, 107, 0.3); } /* Use dark blue for pulse */
+  70% { box-shadow: 0 0 0 12px rgba(2, 38, 107, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(2, 38, 107, 0); }
+}
+
+/* Text Block */
+.chaching-text {
+  flex: 1;
+  min-width: 0;
+}
+.chaching-title {
+  font-size: 19px; /* Adjusted for new text */
+  font-weight: 700; /* Bolder for headlines */
+  color: #02266B; /* Dark Blue */
+  line-height: 1.3;
+}
+.chaching-subtitle {
+  font-size: 16px; /* Adjusted for new text */
+  font-weight: 500; /* Medium weight */
+  color: #02266B; /* Dark Blue */
+  line-height: 1.5;
+  margin-top: 6px; /* Adjusted margin */
+  opacity: 0.9;
+}
+.chaching-benchmark {
+  font-size: 13px;
+  font-weight: 500;
+  color: #02266B;
+  line-height: 1.4;
+  margin-top: 8px;
+  opacity: 0.7;
+  max-width: 300px;
+}
+
+/* Actions Block - now just for the primary button */
+.chaching-actions {
+  display: flex;
+  align-items: center; /* Vertically center button with text */
+  margin-left: 20px; /* Use margin instead of padding for better flex control */
+}
+.chaching-btn {
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  outline: none;
+  padding: 10px 20px;
+}
+.chaching-btn-primary {
+  background: #02266B; /* Dark Blue */
+  color: #FFFFFF; /* White */
+}
+.chaching-btn-primary:hover {
+  background: #011a48; /* Slightly darker blue */
+  box-shadow: 0 4px 12px rgba(2, 38, 107, 0.2);
+  transform: translateY(-2px);
+}
+
+/* Close button - repositioned to top right */
+.chaching-btn-secondary {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  color: #02266B; /* Dark Blue */
+  opacity: 0.6;
+  padding: 4px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  line-height: 1;
+  border: none; /* Ensure no border */
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.chaching-btn-secondary:hover {
+  opacity: 1;
+  background: rgba(2, 38, 107, 0.1);
+  transform: rotate(90deg); /* Add a subtle interaction */
+}
+
+/* Mobile responsiveness */
+@media (max-width: 550px) { /* Trigger on smaller screens */
+  .chaching-notification {
+    left: 10px;
+    right: 10px;
+    bottom: 10px; /* Appear from bottom on mobile */
+    top: auto;
+    width: auto; /* Allow it to be flexible */
+    transform: translateY(120%); /* Animate from bottom */
+    padding: 20px 16px 16px;
+    align-items: center; /* Center align all items */
+  }
+
+  .chaching-notification.chaching-hide {
+    transform: translateY(120%);
+  }
+
+  .chaching-text {
+    flex-direction: column; /* Stack content vertically */
+    text-align: center; /* Center text */
+  }
+  
+  .chaching-icon {
+    width: 50px;
+    height: 50px;
+  }
+  .chaching-icon img {
+    width: 30px;
+    height: 30px;
+  }
+  
+  .chaching-actions {
+    margin: 16px 0 0; /* Add space above button */
+    padding-left: 0;
+    justify-content: center; /* Center the button on mobile */
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .chaching-notification {
+    border: 2px solid #000000;
+  }
+  
+  .chaching-btn-primary {
+    border: 2px solid transparent;
+  }
+  
+  .chaching-btn-secondary {
+    border: 2px solid #666666;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .chaching-notification {
+    transition: opacity 0.2s ease;
+  }
+  
+  .chaching-icon {
+    animation: none;
+  }
+  
+  .chaching-btn {
+    transition: none;
+  }
+}
+
+/* Dark mode support (if the page is in dark mode) */
+@media (prefers-color-scheme: dark) {
+  .chaching-notification {
+    background: #2a2a2a;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+  
+  .chaching-title {
+    color: #ffffff;
+  }
+  
+  .chaching-subtitle {
+    color: #cccccc;
+  }
+  
+  .chaching-icon {
+    background: rgba(76, 175, 80, 0.2);
+  }
+  
+  .chaching-icon img {
+    background: rgba(76, 175, 80, 0.2);
+  }
+  
+  .chaching-btn-secondary {
+    background: #3a3a3a;
+    color: #cccccc;
+  }
+  
+  .chaching-btn-secondary:hover {
+    background: #4a4a4a;
+    color: #ffffff;
+  }
+}
+
+/* Print styles - hide notification when printing */
+@media print {
+  .chaching-notification {
+    display: none !important;
+  }
+} 
