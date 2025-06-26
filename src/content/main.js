@@ -253,8 +253,8 @@ class ChachingContentScript {
         </div>
         <div class="chaching-text">
           <div class="chaching-title">Up to ${cashbackLevel}% Cash Back - Big, Fast, Reliable</div>
-          <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY</div>
-          <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back.</div>
+          <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY from a similar store</div>
+          <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back. Discounts + coupons can also be further applied.</div>
         </div>
         <div class="chaching-actions">
           <button class="chaching-btn chaching-btn-primary" id="chaching-search">
