@@ -214,7 +214,8 @@ class ChachingContentScript {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          // A new node was added. Let's check its z-index and its children's.
+          // A new node was added. We check its z-index and its children's to ensure we stay on top.
+          // A small delay allows the new element to be fully rendered before we check it.
           setTimeout(() => setZIndex(mutation.addedNodes), 100);
           return; // No need to check other mutations in this batch
         }
@@ -283,7 +284,8 @@ class ChachingContentScript {
 
   /**
    * Finds the highest z-index on the page to ensure the notification is on top.
-   * This now recursively searches inside Shadow DOMs.
+   * This function is robust, checking for newly added nodes and searching inside open Shadow DOMs.
+   * @param {NodeList} [nodes] - An optional list of new nodes to check directly. If not provided, it scans the whole page.
    * @returns {number} The highest z-index found.
    */
   getHighestZIndex(nodes) {
@@ -291,7 +293,7 @@ class ChachingContentScript {
 
     const elements = nodes || document.querySelectorAll('*');
 
-    // Recursive function to find the max z-index in a node tree (including shadow DOMs)
+    // Recursive function to find the max z-index in a node tree (including open shadow DOMs)
     const findHighestZ = (nodeList) => {
       for (const element of nodeList) {
         if (element.nodeType !== Node.ELEMENT_NODE) {
@@ -310,7 +312,8 @@ class ChachingContentScript {
           highestIndex = zIndex;
         }
         
-        // If the element has a shadow root, and it's open, recursively search inside it
+        // If the element has a shadow root, and it's open, recursively search inside it.
+        // We cannot search closed shadow roots, so we rely on checking the host element's z-index.
         if (element.shadowRoot && element.shadowRoot.mode === 'open') {
           findHighestZ(element.shadowRoot.querySelectorAll('*'));
         }

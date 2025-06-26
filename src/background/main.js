@@ -3,11 +3,15 @@
  * @description The background service worker for the ChaChing Extension.
  *
  * This script is the persistent "brain" of the extension. It is event-driven
- * and handles tasks that are not tied to a specific webpage's lifecycle.
+ * and is responsible for programmatically injecting scripts into tabs when
+ * the user navigates to a relevant page.
  *
  * Key Responsibilities:
  * - Handling extension lifecycle events (onInstalled, onUpdated).
- * - Storing tab-specific data (e.g., the detected brand).
+ * - Listening for tab updates to trigger the injection flow.
+ * - Programmatically injecting detector scripts onto a page.
+ * - Conditionally injecting the UI (content script and CSS) if a supported brand is found.
+ * - Storing tab-specific data (e.g., the detected brand) for the popup.
  * - Creating the right-click context menu.
  * - Aggregating analytics events.
  *
@@ -132,10 +136,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 /**
  * Listens for when a tab is updated (e.g., the user navigates to a new URL).
- * This is now the main trigger for our brand detection logic.
+ * This is now the main trigger for our brand detection and UI injection logic.
+ * It ensures our UI loads last, preventing other extensions from overlaying it.
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // We only want to run our logic when the page has finished loading.
+  // We only want to run our logic when the page has finished loading and has a valid URL.
   if (changeInfo.status !== 'complete' || !tab.url) {
     return;
   }
@@ -209,7 +214,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
   } catch (error) {
     // This can happen if the page is a special Chrome page, has content security
-    // policies that block injection, or has already been invalidated.
+    // policies that block injection, or has already been invalidated (e.g., user navigated away).
     console.warn(`[Background] Could not inject scripts into tab ${tabId}:`, error.message);
   }
 });
