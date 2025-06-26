@@ -222,7 +222,7 @@ class ChachingContentScript {
         </div>
         <div class="chaching-actions">
           <button class="chaching-btn chaching-btn-primary" id="chaching-search">
-            Do it
+            See it
           </button>
         </div>
       </div>
