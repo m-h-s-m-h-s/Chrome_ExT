@@ -19,10 +19,10 @@
 class ChachingContentScript {
   constructor() {
     /**
-     * An instance of the ProductDetector class, used to analyze the current page.
-     * @type {ProductDetector}
+     * An instance of the BrandDetector class, used to analyze the current page.
+     * @type {BrandDetector}
      */
-    this.detector = new ProductDetector();
+    this.brandDetector = new BrandDetector();
 
     /**
      * Stores the most recent detection result from the detector.
@@ -127,7 +127,7 @@ class ChachingContentScript {
     const detectPage = (isRetry = false) => {
       ChachingUtils.log('info', 'ContentScript', `Running brand detection... (Attempt: ${isRetry ? '2' : '1'})`);
       
-      this.detectionResult = this.detector.detectBrandOnPage();
+      this.detectionResult = this.brandDetector.detectBrandOnPage();
       
       // If a supported brand was found on the page...
       if (this.detectionResult && this.detectionResult.isSupported) {

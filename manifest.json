@@ -48,7 +48,8 @@
       "js": [
         "src/shared/utils.js",
         "src/content/brands.js",
-        "src/content/detector.js",
+        "src/content/brand-detector.js",
+        "src/content/pdp-detector.js",
         "src/content/main.js"
       ],
       "css": ["src/content/styles.css"],
@@ -63,7 +64,8 @@
         "src/content/styles.css",
         "src/shared/utils.js",
         "src/content/brands.js",
-        "src/content/detector.js",
+        "src/content/brand-detector.js",
+        "src/content/pdp-detector.js",
         "src/content/main.js"
       ],
       "matches": ["<all_urls>"]

@@ -1,24 +1,21 @@
 /**
- * product-detector.js - Brand-Focused Detection Module
+ * @file src/content/pdp-detector.js
+ * @description The Product Detail Page (PDP) detection engine for the ChaChing Extension.
  *
- * This module is now optimized for a single purpose: to detect if a product
- * on the current page belongs to a list of supported brands. It extracts the
- * brand name and checks it against the `SUPPORTED_BRANDS` list. All complex
- * heuristic scoring has been removed for simplicity and performance.
+ * This module uses a weighted scoring system based on a variety of positive and negative
+ * signals found on the page to determine if it is a product page.
  *
- * @module product-detector
- * @author Chaching Product Searcher Extension
- * @version 2.0.0
+ * @version 2.5.0
  */
 
 /**
- * The ProductDetector class encapsulates all logic for detecting product pages.
+ * The PdpDetector class encapsulates all logic for detecting product pages.
  * It uses a weighted scoring system based on a variety of positive and negative
  * signals found on the page.
  * 
- * @class ProductDetector
+ * @class PdpDetector
  */
-class ProductDetector {
+class PdpDetector {
   constructor() {
     /**
      * A comprehensive dictionary of keywords, patterns, and selectors that serve as
@@ -107,132 +104,6 @@ class ProductDetector {
      * @type {number}
      */
     this.confidenceThreshold = 50;
-  }
-
-  /**
-   * The main detection method. It extracts a brand name from the page and
-   * checks if that brand is in the centrally managed `SUPPORTED_BRANDS` list.
-   *
-   * @returns {Object|null} A result object containing the detected brand and title
-   *                        if a supported brand is found, otherwise null.
-   */
-  detectBrandOnPage() {
-    ChachingUtils.log('info', 'ProductDetector', 'Starting brand detection...');
-    
-    const brand = this.extractBrandName();
-    
-    if (brand) {
-      // Use the high-performance Set for the check.
-      if (SUPPORTED_BRANDS_SET.has(brand.toLowerCase())) {
-        ChachingUtils.log('info', 'ProductDetector', `SUCCESS: Found supported brand: "${brand}"`);
-        // If we found a supported brand, we also grab the title for context.
-        const title = this.extractProductTitle();
-        return {
-          isSupported: true,
-          productInfo: {
-            brand: brand,
-            title: title
-          }
-        };
-      } else {
-        ChachingUtils.log('info', 'ProductDetector', `Found brand "${brand}", but it is not on the supported list.`);
-      }
-    }
-    
-    // If no brand was found, or the brand is not supported, return null.
-    return null;
-  }
-
-  /**
-   * Extracts the brand name from the page using multiple strategies.
-   *
-   * @returns {string|null} The detected brand name, or null if not found.
-   */
-  extractBrandName() {
-    // Strategy 1: Structured Data (JSON-LD)
-    const structuredDataScript = document.querySelector('script[type="application/ld+json"]');
-    if (structuredDataScript) {
-        try {
-            const data = JSON.parse(structuredDataScript.textContent);
-            const brand = data.brand?.name || data.brand;
-            if (typeof brand === 'string' && brand.trim()) return brand.trim();
-        } catch (e) { /* Ignore parsing errors */ }
-    }
-
-    // Strategy 2: Look for a supported brand at the beginning of the product title.
-    // This is a high-priority check as it's very reliable.
-    const productTitle = this.extractProductTitle();
-    if (productTitle) {
-      const lowerCaseTitle = productTitle.toLowerCase();
-      // Iterate over the array to perform the 'startsWith' check.
-      const matchedBrand = SUPPORTED_BRANDS_ARRAY.find(brand => lowerCaseTitle.startsWith(brand.toLowerCase() + ' '));
-      
-      if (matchedBrand) {
-        const originalCasingBrand = productTitle.substring(0, matchedBrand.length);
-        ChachingUtils.log('info', 'ProductDetector', `Brand found in product title: "${originalCasingBrand}"`);
-        return originalCasingBrand;
-      }
-    }
-
-    // Strategy 3: Open Graph Meta Tag for Brand
-    const ogBrandElement = document.querySelector('meta[property="product:brand"], meta[property="og:brand"]');
-    if (ogBrandElement && ogBrandElement.content) return ogBrandElement.content.trim();
-
-    // Strategy 4: Semantic HTML Selectors
-    const brandSelectors = ['[itemprop="brand"] [itemprop="name"]', '[itemprop="brand"]', '[data-product-brand]', '[class*="brand-name"]', '.product-brand'];
-    for (const selector of brandSelectors) {
-      const element = document.querySelector(selector);
-      if (element && element.innerText?.trim()) return element.innerText.trim();
-    }
-
-    // Strategy 5: Look for visible key-value pairs (e.g., "Brand: Nike")
-    const potentialLabels = document.querySelectorAll('span, dt, th, b, strong');
-    for (const label of potentialLabels) {
-        if (label.innerText?.trim().toLowerCase().startsWith('brand')) {
-            let valueElement = label.nextElementSibling;
-            // More robustly find the value, even if it's not the immediate next sibling.
-            if (!valueElement && label.parentElement) valueElement = label.parentElement.nextElementSibling;
-            if (valueElement?.firstElementChild) valueElement = valueElement.firstElementChild; // Handle cases where the value is nested inside a link.
-
-            if (valueElement && valueElement.innerText?.trim()) {
-                ChachingUtils.log('info', 'ProductDetector', `Brand found via key-value pair: "${valueElement.innerText.trim()}"`);
-                return valueElement.innerText.trim();
-            }
-        }
-    }
-
-    // Strategy 6: Breadcrumbs
-    const breadcrumbItems = document.querySelectorAll('[class*="breadcrumb"] a');
-    if (breadcrumbItems.length > 1) {
-      const brandCandidate = breadcrumbItems[breadcrumbItems.length - 2].innerText.trim();
-      if (brandCandidate.length > 2 && !['home', 'products', 'shop'].includes(brandCandidate.toLowerCase())) {
-        return brandCandidate;
-      }
-    }
-
-    // Strategy 7: Open Graph Site Name (good fallback for first-party sites)
-    const ogSiteName = document.querySelector('meta[property="og:site_name"]');
-    if (ogSiteName && ogSiteName.content) {
-        ChachingUtils.log('info', 'ProductDetector', `Brand found via og:site_name: "${ogSiteName.content.trim()}"`);
-        return ogSiteName.content.trim();
-    }
-    
-    return null;
-  }
-
-  /**
-   * Extracts the most likely product title from the page. This is a simplified helper.
-   *
-   * @returns {string|null} The extracted product title.
-   */
-  extractProductTitle() {
-    const h1Element = document.querySelector('h1');
-    if (h1Element) return h1Element.innerText.trim();
-
-    const ogTitleElement = document.querySelector('meta[property="og:title"]');
-    if (ogTitleElement) return ogTitleElement.content.trim();
-
-    return document.title.trim();
   }
 
   /**
@@ -492,5 +363,5 @@ class ProductDetector {
 
 // Export the detector class instance for use in content.js
 if (typeof window !== 'undefined') {
-  window.ProductDetector = ProductDetector;
+  window.PdpDetector = PdpDetector;
 } 
