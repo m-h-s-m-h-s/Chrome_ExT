@@ -217,7 +217,7 @@ class ChachingContentScript {
         </div>
         <div class="chaching-text">
           <div class="chaching-title">Up to 32% Cash Back - Fast, Reliable, Big</div>
-          <div class="chaching-subtitle">On ${displayBrandName} products TODAY</div>
+          <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY</div>
           <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back.</div>
         </div>
         <div class="chaching-actions">
