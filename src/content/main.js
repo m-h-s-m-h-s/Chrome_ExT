@@ -2,13 +2,14 @@
  * @file src/content/main.js
  * @description The main content script, which acts as the on-page coordinator.
  *
- * This script is injected into product detail pages and is responsible for:
- * 1.  Orchestrating the brand detection by running the ProductDetector.
+ * This script is injected into every page and is responsible for:
+ * 1.  Orchestrating the detection process by first checking if the page is a
+ *     Product Detail Page (PDP) and then checking for supported brands.
  * 2.  Managing the state and display of the on-page notification UI, including dynamic cashback info.
  * 3.  Communicating with the background script to log events.
  * 4.  Handling dynamic page changes in Single-Page Applications (SPAs).
  *
- * @version 2.3.0
+ * @version 2.4.0
  */
 
 /**
@@ -23,6 +24,12 @@ class ChachingContentScript {
      * @type {BrandDetector}
      */
     this.brandDetector = new BrandDetector();
+
+    /**
+     * An instance of the PdpDetector class, used to determine if a page is a PDP.
+     * @type {PdpDetector}
+     */
+    this.pdpDetector = new PdpDetector();
 
     /**
      * Stores the most recent detection result from the detector.
@@ -126,10 +133,17 @@ class ChachingContentScript {
    * rapid DOM changes on modern websites.
    */
   startDetection() {
-    // The detection logic is now simpler: just call the brand detector.
+    // The detection logic is now a two-step process.
     const detectPage = (isRetry = false) => {
-      ChachingUtils.log('info', 'ContentScript', `Running brand detection... (Attempt: ${isRetry ? '2' : '1'})`);
+      ChachingUtils.log('info', 'ContentScript', `Running detection... (Attempt: ${isRetry ? '2' : '1'})`);
       
+      // Step 1: First, determine if this is a Product Detail Page.
+      if (!this.pdpDetector.isProductPage()) {
+        ChachingUtils.log('info', 'ContentScript', 'Not a product page based on PDP detection score.');
+        return; // Exit if it's not a PDP
+      }
+
+      ChachingUtils.log('info', 'ContentScript', 'PDP detected. Now checking for supported brands...');
       this.detectionResult = this.brandDetector.detectBrandOnPage();
       
       // If a supported brand was found on the page...

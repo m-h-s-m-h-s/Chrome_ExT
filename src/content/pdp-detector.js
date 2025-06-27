@@ -2,10 +2,11 @@
  * @file src/content/pdp-detector.js
  * @description The Product Detail Page (PDP) detection engine for the ChaChing Extension.
  *
- * This module uses a weighted scoring system based on a variety of positive and negative
- * signals found on the page to determine if it is a product page.
+ * This module uses a weighted, score-based system to determine if the current
+ * page is a product page. It analyzes various positive and negative signals
+ * throughout the DOM to calculate a confidence score.
  *
- * @version 2.5.0
+ * @version 2.6.0
  */
 
 /**
@@ -104,6 +105,62 @@ class PdpDetector {
      * @type {number}
      */
     this.confidenceThreshold = 50;
+  }
+
+  /**
+   * The main detection method for this class. It calculates a confidence score
+   * to determine if the current page is a Product Detail Page (PDP).
+   *
+   * @returns {boolean} True if the calculated score exceeds the confidence threshold, otherwise false.
+   */
+  isProductPage() {
+    let score = 0;
+    const signals = {};
+
+    // --- Gather Positive Signals ---
+    if (this.detectPrice().found) {
+      score += this.weights.price;
+      signals.price = true;
+    }
+    if (this.detectActionButtons()) {
+      score += this.weights.actionButton;
+      signals.actionButton = true;
+    }
+    if (this.detectProductImages().length > 0) {
+      score += this.weights.productImage;
+      signals.productImage = true;
+    }
+    if (this.detectProductMetadata()) {
+      score += this.weights.metadata;
+      signals.metadata = true;
+    }
+    if (this.detectReviews()) {
+      score += this.weights.reviews;
+      signals.reviews = true;
+    }
+    if (this.detectStructuredData().found) {
+      score += this.weights.structuredData;
+      signals.structuredData = true;
+    }
+    if (this.detectProductUrlPattern()) {
+      score += this.weights.urlPattern;
+      signals.urlPattern = true;
+    }
+    if (this.detectBreadcrumbs()) {
+      score += this.weights.breadcrumb;
+      signals.breadcrumb = true;
+    }
+    
+    // --- Apply Negative Signals ---
+    const pageText = document.body.innerText.toLowerCase();
+    if (this.indicators.searchPageKeywords.some(keyword => pageText.includes(keyword))) {
+      score += this.weights.searchPageSignal;
+      signals.searchPageSignal = true;
+    }
+
+    ChachingUtils.log('info', 'PdpDetector', `Final PDP score: ${score}`, signals);
+    
+    return score >= this.confidenceThreshold;
   }
 
   /**
