@@ -1,56 +1,56 @@
 /**
- * brands.js - A centralized list of supported brands and their cashback levels.
+ * brands.js - Dynamically loads and manages the list of supported brands.
  *
- * This file contains the array of brand objects that the extension will actively look for.
- * Each object contains a brand name and its associated cashback percentage.
- * The list is converted into a Map for highly efficient O(1) lookups.
+ * This module fetches the `BrandList.csv` file, parses it, and creates a global,
+ * quickly-searchable Map of supported brands. It also assigns a static cashback
+ * percentage to each brand as it's loaded.
  *
- * To add, remove, or change supported brands, simply edit the `brands` array below.
- * The brand names should be in lowercase to ensure case-insensitive matching.
+ * This asynchronous loading ensures that the brand list can be updated easily
+ * by modifying the CSV file without needing to redeploy the entire extension.
  *
  * @module brands
  */
 
-// To add a new brand, add its object to this array with a name and cashback level.
-// For example: `const brands = [{ name: 'nike', cashback: 8 }, ...];`
-const brands = [
-  { name: 'ruggable', cashback: 10 },
-  { name: 'creed', cashback: 15 },
-  { name: 'nike', cashback: 12 },
-  { name: 'adidas', cashback: 11 },
-  { name: 'ugg', cashback: 9 },
-  { name: 'lululemon', cashback: 8 },
-  { name: 'levis', cashback: 7 },
-  { name: 'samsung', cashback: 18 },
-  { name: 'apple', cashback: 5 },
-  { name: 'sony', cashback: 14 },
-  { name: 'lego', cashback: 6 },
-  { name: 'patagonia', cashback: 13 },
-  { name: 'the north face', cashback: 10 },
-  { name: 'coach', cashback: 20 },
-  { name: 'michael kors', cashback: 22 },
-  { name: 'kate spade', cashback: 25 },
-  { name: 'tory burch', cashback: 23 },
-  { name: 'gucci', cashback: 30 },
-  { name: 'louis vuitton', cashback: 4 },
-  { name: 'prada', cashback: 7 },
-  { name: 'chanel', cashback: 5 }
-];
+async function loadBrands() {
+  try {
+    const response = await fetch(chrome.runtime.getURL('src/assets/BrandList.csv'));
+    const csvText = await response.text();
+    
+    // Parse CSV: skip header, trim whitespace, remove quotes, and filter out empty lines.
+    const brandNames = csvText
+      .split('\n')
+      .slice(1) 
+      .map(name => name.trim().replace(/"/g, ''))
+      .filter(Boolean);
 
-// Normalize all brand names in the array for consistent matching.
-const normalizedBrands = brands.map(brand => ({
-  ...brand,
-  name: normalizeBrand(brand.name)
-}));
+    // Create brand objects with a static cashback value
+    const brands = brandNames.map(name => ({
+      name,
+      cashback: 33
+    }));
 
-// We use a Map for O(1) lookups, mapping brand names to their full object.
-const SUPPORTED_BRANDS_MAP = new Map(normalizedBrands.map(brand => [brand.name, brand]));
+    // Normalize all brand names in the array for consistent matching.
+    const normalizedBrands = brands.map(brand => ({
+      ...brand,
+      name: normalizeBrand(brand.name)
+    }));
 
-// We also expose an array of just the brand names for operations that require it.
-const SUPPORTED_BRANDS_ARRAY = normalizedBrands.map(brand => brand.name);
+    // We use a Map for O(1) lookups, mapping brand names to their full object.
+    window.SUPPORTED_BRANDS_MAP = new Map(normalizedBrands.map(brand => [brand.name, brand]));
 
-// Making the Map and Array available to other scripts.
+    // We also expose an array of just the brand names for operations that require it.
+    window.SUPPORTED_BRANDS_ARRAY = normalizedBrands.map(brand => brand.name);
+
+    ChachingUtils.log('info', 'Brands', `${window.SUPPORTED_BRANDS_ARRAY.length} brands loaded successfully.`);
+  } catch (error) {
+    ChachingUtils.log('error', 'Brands', 'Failed to load or parse BrandList.csv.', error);
+    // Initialize with empty data to prevent errors in other scripts
+    window.SUPPORTED_BRANDS_MAP = new Map();
+    window.SUPPORTED_BRANDS_ARRAY = [];
+  }
+}
+
+// Making the load function available to other scripts.
 if (typeof window !== 'undefined') {
-  window.SUPPORTED_BRANDS_MAP = SUPPORTED_BRANDS_MAP;
-  window.SUPPORTED_BRANDS_ARRAY = SUPPORTED_BRANDS_ARRAY;
+  window.loadBrands = loadBrands;
 } 

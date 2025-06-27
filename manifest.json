@@ -6,12 +6,7 @@
   "permissions": [
     "activeTab",
     "storage",
-    "notifications",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://*/*",
-    "http://*/*"
+    "notifications"
   ],
   "background": {
     "service_worker": "src/background/main.js"
@@ -35,13 +30,6 @@
         "*://*.chaching.me/*",
         "*://chaching.me/*",
         "*://*.google.com/*",
-        "*://*.youtube.com/*",
-        "*://*.facebook.com/*",
-        "*://*.twitter.com/*",
-        "*://*.linkedin.com/*",
-        "*://*.github.com/*",
-        "*://*.wikipedia.org/*",
-        "*://*.reddit.com/*",
         "*://localhost/*",
         "*://127.0.0.1/*"
       ],
@@ -61,6 +49,7 @@
     {
       "resources": [
         "src/assets/ChaChing_Logo.png",
+        "src/assets/BrandList.csv",
         "src/content/styles.css",
         "src/shared/utils.js",
         "src/content/brands.js",

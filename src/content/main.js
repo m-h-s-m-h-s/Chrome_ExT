@@ -59,6 +59,9 @@ class ChachingContentScript {
    */
   async init() {
     try {
+      // Asynchronously load brands from the CSV file. This must complete first.
+      await window.loadBrands();
+
       // Asynchronously load preferences from storage.
       await this.loadPreferences();
 
@@ -139,8 +142,26 @@ class ChachingContentScript {
         }
         this.notifyBackgroundScript();
       } else {
-        // If the first attempt fails, schedule a single retry after a delay.
-        if (!isRetry) {
+        const currentHostname = window.location.hostname.toLowerCase();
+        const specialMerchants = ['steals.com', 'beachcamera.com', 'videoshops.com', 'salonhq.com', 'pedalelectric.com'];
+        const matchedMerchant = specialMerchants.find(merchant => currentHostname.includes(merchant));
+
+        if (matchedMerchant) {
+            ChachingUtils.log('info', 'ContentScript', `On a special merchant site: ${matchedMerchant}.`);
+            this.detectionResult = {
+                isSupported: true,
+                isSpecialMerchant: true,
+                productInfo: {
+                    brand: matchedMerchant, 
+                    title: `Up to 33% cash back at ${matchedMerchant}`,
+                    cashback: 33
+                }
+            };
+            if (this.preferences.autoShow && !this.notificationShown) {
+                this.showNotification();
+            }
+            this.notifyBackgroundScript();
+        } else if (!isRetry) {
           ChachingUtils.log('info', 'ContentScript', 'No supported brand found on first attempt. Scheduling a retry.');
           setTimeout(() => detectPage(true), 3000); // 3-second delay for the retry.
         } else {
@@ -240,30 +261,50 @@ class ChachingContentScript {
     const notification = document.createElement('div');
     notification.className = 'chaching-notification';
 
-    // The notification now focuses on the brand.
-    const brandName = this.detectionResult?.productInfo?.brand || 'top brands';
-    // For display purposes only, capitalize the first letter of the brand name.
-    const displayBrandName = brandName.charAt(0).toUpperCase() + brandName.slice(1);
-    const cashbackLevel = this.detectionResult?.productInfo?.cashback;
+    if (this.detectionResult?.isSpecialMerchant) {
+      const merchantName = this.detectionResult.productInfo.brand;
+      notification.innerHTML = `
+        <button class="chaching-btn chaching-btn-secondary" id="chaching-close">✕</button>
+        <div class="chaching-notification-content">
+          <div class="chaching-icon">
+            <img src="${chrome.runtime.getURL('src/assets/ChaChing_Logo.png')}" alt="ChaChing Logo" />
+          </div>
+          <div class="chaching-text">
+            <div class="chaching-title">Get up to 33% Cash Back!</div>
+            <div class="chaching-subtitle">Earn cashback at ${merchantName} when you shop through ChaChing.</div>
+          </div>
+          <div class="chaching-actions">
+            <button class="chaching-btn chaching-btn-primary" id="chaching-search">
+              Activate Cashback
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      // The notification now focuses on the brand.
+      const brandName = this.detectionResult?.productInfo?.brand || 'top brands';
+      // For display purposes only, capitalize the first letter of the brand name.
+      const displayBrandName = brandName.charAt(0).toUpperCase() + brandName.slice(1);
 
-    notification.innerHTML = `
-      <button class="chaching-btn chaching-btn-secondary" id="chaching-close">✕</button>
-      <div class="chaching-notification-content">
-        <div class="chaching-icon">
-          <img src="${chrome.runtime.getURL('src/assets/ChaChing_Logo.png')}" alt="ChaChing Logo" />
+      notification.innerHTML = `
+        <button class="chaching-btn chaching-btn-secondary" id="chaching-close">✕</button>
+        <div class="chaching-notification-content">
+          <div class="chaching-icon">
+            <img src="${chrome.runtime.getURL('src/assets/ChaChing_Logo.png')}" alt="ChaChing Logo" />
+          </div>
+          <div class="chaching-text">
+            <div class="chaching-title">Up to 33% Cash Back - Big, Fast, Reliable</div>
+            <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY from a similar store</div>
+            <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back. Discounts + coupons can also be further applied.</div>
+          </div>
+          <div class="chaching-actions">
+            <button class="chaching-btn chaching-btn-primary" id="chaching-search">
+              See it
+            </button>
+          </div>
         </div>
-        <div class="chaching-text">
-          <div class="chaching-title">Up to ${cashbackLevel}% Cash Back - Big, Fast, Reliable</div>
-          <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY from a similar store</div>
-          <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back. Discounts + coupons can also be further applied.</div>
-        </div>
-        <div class="chaching-actions">
-          <button class="chaching-btn chaching-btn-primary" id="chaching-search">
-            See it
-          </button>
-        </div>
-      </div>
-    `;
+      `;
+    }
 
     // Add event listeners. Note the close button is now at the top level.
     notification.querySelector('#chaching-search').addEventListener('click', () => {

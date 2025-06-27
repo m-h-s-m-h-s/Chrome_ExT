@@ -4,10 +4,10 @@
  *
  * This module uses a pure "voting" system to determine the most likely supported brand on a page.
  * It finds all potential brand candidates using various robust strategies, then tallies "votes"
- * for each of our officially supported brands based on how often they appear in the candidates.
+ * for each of our officially supported brands based on **exact, whole-word matches** with the candidates.
  * The supported brand with the most votes wins.
  *
- * @version 2.5.0
+ * @version 2.5.1
  */
 class BrandDetector {
   /**
@@ -162,9 +162,9 @@ class BrandDetector {
     // within the candidates gathered from the page.
     for (const supportedBrandName of SUPPORTED_BRANDS_MAP.keys()) {
       candidates.forEach(candidate => {
-        // e.g., check if the candidate "Levi's® Premium" includes the supported brand "levis".
-        if (normalizeBrand(candidate).includes(supportedBrandName)) {
-          // If it does, cast a vote for that SUPPORTED brand.
+        // Perform a strict, case-insensitive equality check for whole-word matching.
+        if (normalizeBrand(candidate) === supportedBrandName) {
+          // If it matches exactly, cast a vote for that SUPPORTED brand.
           voteCounts.set(supportedBrandName, (voteCounts.get(supportedBrandName) || 0) + 1);
         }
       });
