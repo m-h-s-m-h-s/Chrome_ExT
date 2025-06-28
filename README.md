@@ -1,4 +1,4 @@
-# ChaChing Browser Extension (v2.1)
+# ChaChing Browser Extension (v2.1.1)
 
 An intelligent browser extension that finds the best Cash Back deals from ChaChing, ensuring you never miss out on savings, no matter where you shop online.
 
@@ -57,7 +57,7 @@ WebExt/
 │   │   ├── main.js          # The on-page UI and main coordination script.
 │   │   ├── brand-detector.js  # The "brain" for finding the brand on a page.
 │   │   ├── pdp-detector.js    # Logic for detecting if a page is a Product Detail Page.
-│   │   ├── brands.js        # Dynamically loads and manages the brand list.
+│   │   ├── brands.js        # Dynamically loads and manages the brand list, preserving original names for display.
 │   │   └── styles.css       # The CSS for the on-page notification.
 │   └── shared/
 │       └── utils.js         # Shared helper functions.
@@ -71,10 +71,10 @@ This is how a detection happens:
 
 1.  A user navigates to a new page.
 2.  The content scripts defined in `manifest.json` are loaded into the page.
-3.  **`brands.js`** is called first. It asynchronously fetches and parses `assets/BrandList.csv`.
+3.  **`brands.js`** is called first. It asynchronously fetches and parses `assets/BrandList.csv`, creating a map where normalized brand names point to the original brand data.
 4.  Once the brands are loaded, **`main.js`** initiates the brand detection process.
 5.  **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
-6.  If a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI.
+6.  If a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI. The UI uses the original brand name from the map.
 7.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
 
 ### 4. Your Most Common Task: Managing the Brand List (5 Minutes)
