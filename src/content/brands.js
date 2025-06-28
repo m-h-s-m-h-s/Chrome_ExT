@@ -29,17 +29,12 @@ async function loadBrands() {
       cashback: 33
     }));
 
-    // Normalize all brand names in the array for consistent matching.
-    const normalizedBrands = brands.map(brand => ({
-      ...brand,
-      name: normalizeBrand(brand.name)
-    }));
+    // We use a Map for O(1) lookups, mapping a normalized version of the name
+    // to the full brand object (which contains the original name for display).
+    window.SUPPORTED_BRANDS_MAP = new Map(brands.map(brand => [normalizeBrand(brand.name), brand]));
 
-    // We use a Map for O(1) lookups, mapping brand names to their full object.
-    window.SUPPORTED_BRANDS_MAP = new Map(normalizedBrands.map(brand => [brand.name, brand]));
-
-    // We also expose an array of just the brand names for operations that require it.
-    window.SUPPORTED_BRANDS_ARRAY = normalizedBrands.map(brand => brand.name);
+    // We also expose an array of just the normalized brand names (the keys) for matching operations.
+    window.SUPPORTED_BRANDS_ARRAY = Array.from(window.SUPPORTED_BRANDS_MAP.keys());
 
     ChachingUtils.log('info', 'Brands', `${window.SUPPORTED_BRANDS_ARRAY.length} brands loaded successfully.`);
   } catch (error) {

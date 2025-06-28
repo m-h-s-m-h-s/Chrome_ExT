@@ -39,6 +39,13 @@ const CONFIG = {
 const detectedProducts = new Map();
 
 /**
+ * A Set to store the IDs of tabs that were opened by a link from chaching.me.
+ * This is used to suppress the notification on the first page load.
+ * @type {Set<number>}
+ */
+const tabsOpenedByChaChing = new Set();
+
+/**
  * A list of domains to exclude from script injection.
  * @const {string[]}
  */
@@ -140,6 +147,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * It ensures our UI loads last, preventing other extensions from overlaying it.
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // If a tab is opened from chaching.me, add it to our set to suppress the first notification.
+  if (changeInfo.status === 'loading' && tab.openerTabId) {
+    try {
+      const openerTab = await chrome.tabs.get(tab.openerTabId);
+      if (openerTab?.url && openerTab.url.includes('chaching.me')) {
+        console.log(`[Background] Tab ${tabId} was opened by ChaChing. Flagging to suppress UI.`);
+        tabsOpenedByChaChing.add(tabId);
+      }
+    } catch (error) {
+      console.warn(`[Background] Could not get opener tab details for tab ${tabId}:`, error.message);
+    }
+  }
+
   // We only want to run our logic when the page has finished loading and has a valid URL.
   if (changeInfo.status !== 'complete' || !tab.url) {
     return;
@@ -184,32 +204,42 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     const detectionResult = injectionResults[0].result;
 
     if (detectionResult && detectionResult.isSupported) {
-      console.log(`[Background] Supported brand "${detectionResult.productInfo.brand}" found on tab ${tabId}. Injecting UI...`);
-      
-      // Store the result for the popup.
-      detectedProducts.set(tabId, {
-        ...detectionResult,
-        detectedAt: new Date().toISOString(),
-        tabId: tabId,
-        domain: new URL(tab.url).hostname
-      });
-      
-      // Step 3: Inject the UI (CSS and main content script).
-      await chrome.scripting.insertCSS({
-        target: { tabId: tabId },
-        files: ["src/content/styles.css"],
-      });
+      // If the tab was opened by chaching.me, suppress the UI for this one navigation.
+      if (tabsOpenedByChaChing.has(tabId)) {
+        console.log(`[Background] Suppressing UI for tab ${tabId} as it was opened by ChaChing.`);
+        // Remove the flag so subsequent navigations in this tab will show the UI.
+        tabsOpenedByChaChing.delete(tabId);
+      } else {
+        console.log(`[Background] Supported brand "${detectionResult.productInfo.brand}" found on tab ${tabId}. Injecting UI...`);
+        
+        // Store the result for the popup.
+        detectedProducts.set(tabId, {
+          ...detectionResult,
+          detectedAt: new Date().toISOString(),
+          tabId: tabId,
+          domain: new URL(tab.url).hostname
+        });
+        
+        // Step 3: Inject the UI (CSS and main content script).
+        await chrome.scripting.insertCSS({
+          target: { tabId: tabId },
+          files: ["src/content/styles.css"],
+        });
 
-      await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ["src/content/main.js"],
-      });
-      
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ["src/content/main.js"],
+        });
+      }
     } else {
       console.log(`[Background] No supported brand found on tab ${tabId}.`);
       // Clear any old data for this tab if a brand is no longer detected.
       if (detectedProducts.has(tabId)) {
         detectedProducts.delete(tabId);
+      }
+      // Also clear the suppression flag if it exists for this tab.
+      if (tabsOpenedByChaChing.has(tabId)) {
+        tabsOpenedByChaChing.delete(tabId);
       }
     }
   } catch (error) {
@@ -227,6 +257,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (detectedProducts.has(tabId)) {
     detectedProducts.delete(tabId);
     console.log(`[Background] Cleaned up data for closed tab: ${tabId}`);
+  }
+  // Also clean up from our suppression set.
+  if (tabsOpenedByChaChing.has(tabId)) {
+    tabsOpenedByChaChing.delete(tabId);
   }
 });
 

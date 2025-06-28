@@ -71,9 +71,9 @@ class ChachingContentScript {
       // Asynchronously load preferences from storage.
       await this.loadPreferences();
 
-      // Check if the user has disabled the extension or blacklisted the current site.
-      if (!this.isEnabledForCurrentDomain()) {
-        ChachingUtils.log('info', 'ContentScript', 'Extension is disabled for this domain.');
+      // Check if the user has disabled the extension globally.
+      if (!this.isGloballyEnabled()) {
+        ChachingUtils.log('info', 'ContentScript', 'Extension is globally disabled.');
         return; // Stop execution if disabled.
       }
 
@@ -116,14 +116,12 @@ class ChachingContentScript {
   }
 
   /**
-   * Checks if the extension is globally enabled and if the current website's
-   * domain has not been blacklisted by the user.
+   * Checks if the extension is globally enabled by the user.
    *
-   * @returns {boolean} True if the extension should be active on the current domain.
+   * @returns {boolean} True if the extension should be active.
    */
-  isEnabledForCurrentDomain() {
-    const currentDomain = ChachingUtils.extractDomain(window.location.href);
-    return this.preferences.enabled && !this.preferences.blacklistedDomains.includes(currentDomain);
+  isGloballyEnabled() {
+    return this.preferences.enabled;
   }
 
   /**
@@ -187,12 +185,19 @@ class ChachingContentScript {
    * The notification is designed to be persistent and must be manually dismissed.
    */
   async showNotification() {
-    // Prevent duplicate notifications
+    // Check #1: Do not show if the domain is on the user's blacklist.
+    const currentDomain = ChachingUtils.extractDomain(window.location.href);
+    if (this.preferences.blacklistedDomains.includes(currentDomain)) {
+      ChachingUtils.log('info', 'ContentScript', 'Domain is blacklisted, suppressing notification.');
+      return;
+    }
+
+    // Check #2: Prevent duplicate notifications on the same page view.
     if (this.notificationShown || !this.detectionResult?.productInfo?.title) {
       return;
     }
 
-    // Check if notification was dismissed recently on this specific URL (within 15 minutes)
+    // Check #3: Do not show if notification was dismissed recently on this specific URL (within 15 minutes).
     const dismissalKey = `dismissal_${window.location.href}`;
     const dismissalData = await this.getStorageData(dismissalKey);
     
