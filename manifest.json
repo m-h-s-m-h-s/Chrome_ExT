@@ -4,11 +4,16 @@
   "version": "2.0.0",
   "description": "Find the best Cash Back deals from ChaChing so you don't lose out no matter where you shop online.",
   "permissions": [
+    "activeTab",
     "storage",
     "notifications"
   ],
   "background": {
     "service_worker": "src/background/main.js"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Find cashback deals on Chaching"
   },
   "icons": {
     "16": "src/assets/ChaChing_Logo.png",
