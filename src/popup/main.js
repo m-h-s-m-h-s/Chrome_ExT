@@ -20,9 +20,13 @@
  * Manages the popup UI state, handles user interactions, and communicates
  * with the content script and background service worker.
  * 
+ * The popup only shows detected products when:
+ * - The page is a valid PDP AND has a supported brand, OR
+ * - The site is a special merchant partner
+ * 
  * @module popup
  * @author Chaching Product Searcher Extension
- * @version 1.0.0
+ * @version 2.3.1
  */
 
 /**

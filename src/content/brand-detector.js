@@ -7,7 +7,10 @@
  * for each of our officially supported brands based on **exact, whole-word matches** with the candidates.
  * The supported brand with the most votes wins.
  *
- * @version 2.5.1
+ * This detector is only called after the page passes PDP (Product Detail Page) detection,
+ * ensuring we only detect brands on actual product pages.
+ *
+ * @version 2.6.0
  */
 class BrandDetector {
   /**

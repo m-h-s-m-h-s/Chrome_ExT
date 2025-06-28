@@ -2,11 +2,18 @@
  * utils.js - Utility functions for the Chaching Product Searcher Extension
  * 
  * This module provides common utility functions used throughout the extension
- * for text processing, URL generation, and data validation.
+ * for text processing, URL generation, data validation, and brand normalization.
+ * 
+ * Key functions include:
+ * - sanitizeProductTitle: Cleans product titles for URL parameters
+ * - generateChachingUrl: Creates ChaChing search URLs
+ * - normalizeBrand: Normalizes brand names for comparison
+ * - extractDomain: Extracts domain names from URLs
+ * - log: Consistent logging with timestamps
  * 
  * @module utils
  * @author Chaching Product Searcher Extension
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 /**

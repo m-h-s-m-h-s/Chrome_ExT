@@ -3,19 +3,19 @@
  * @description The background service worker for the ChaChing Extension.
  *
  * This script is the persistent "brain" of the extension. It is event-driven
- * and is responsible for programmatically injecting scripts into tabs when
- * the user navigates to a relevant page.
+ * and handles extension lifecycle events and message passing.
  *
  * Key Responsibilities:
  * - Handling extension lifecycle events (onInstalled, onUpdated).
- * - Listening for tab updates to trigger the injection flow.
- * - Programmatically injecting detector scripts onto a page.
- * - Conditionally injecting the UI (content script and CSS) if a supported brand is found.
- * - Storing tab-specific data (e.g., the detected brand) for the popup.
+ * - Managing communication between content scripts and popup.
+ * - Storing tab-specific data for the popup.
  * - Creating the right-click context menu.
  * - Aggregating analytics events.
  *
- * @version 2.2.0
+ * NOTE: Content script injection is now handled via manifest.json, not programmatically.
+ * Domain exclusions are managed via src/assets/excluded-domains.json.
+ *
+ * @version 2.3.0
  */
 
 /**
@@ -39,159 +39,10 @@ const CONFIG = {
 const detectedProducts = new Map();
 
 /**
- * A list of domains to exclude from script injection.
- * @const {string[]}
+ * NOTE: Domain exclusions are now managed via src/assets/excluded-domains.json
+ * This allows for easier updates without modifying code.
+ * The content script checks the exclusion list before running any detection logic.
  */
-const EXCLUDED_DOMAINS = [
-  // Original exclusions
-  'chaching.me',
-  'localhost',
-  '127.0.0.1',
-  
-  // Search engines
-  'google.com',
-  'bing.com',
-  'yahoo.com',
-  'duckduckgo.com',
-  'baidu.com',
-  'yandex.com',
-  
-  // Social media
-  'facebook.com',
-  'twitter.com',
-  'instagram.com',
-  'linkedin.com',
-  'pinterest.com',
-  'tiktok.com',
-  'snapchat.com',
-  'reddit.com',
-  'tumblr.com',
-  'discord.com',
-  
-  // Video/streaming
-  'youtube.com',
-  'netflix.com',
-  'twitch.tv',
-  'vimeo.com',
-  'dailymotion.com',
-  'hulu.com',
-  'disneyplus.com',
-  'hbomax.com',
-  'peacocktv.com',
-  'paramountplus.com',
-  'spotify.com',
-  'soundcloud.com',
-  'pandora.com',
-  
-  // Communication
-  'gmail.com',
-  'outlook.com',
-  'yahoo.com',
-  'mail.google.com',
-  'messenger.com',
-  'whatsapp.com',
-  'telegram.org',
-  'slack.com',
-  'zoom.us',
-  'teams.microsoft.com',
-  
-  // News/media
-  'cnn.com',
-  'bbc.com',
-  'nytimes.com',
-  'theguardian.com',
-  'wsj.com',
-  'forbes.com',
-  'bloomberg.com',
-  'reuters.com',
-  'apnews.com',
-  'npr.org',
-  'foxnews.com',
-  'nbcnews.com',
-  'washingtonpost.com',
-  'usatoday.com',
-  'time.com',
-  
-  // Reference/education
-  'wikipedia.org',
-  'wikimedia.org',
-  'archive.org',
-  'britannica.com',
-  'dictionary.com',
-  'thesaurus.com',
-  'coursera.org',
-  'udemy.com',
-  'edx.org',
-  'khanacademy.org',
-  'duolingo.com',
-  
-  // Developer/tech
-  'github.com',
-  'gitlab.com',
-  'bitbucket.org',
-  'stackoverflow.com',
-  'developer.mozilla.org',
-  'w3schools.com',
-  'codepen.io',
-  'jsfiddle.net',
-  'replit.com',
-  
-  // Productivity/business
-  'docs.google.com',
-  'drive.google.com',
-  'dropbox.com',
-  'notion.so',
-  'trello.com',
-  'asana.com',
-  'monday.com',
-  'airtable.com',
-  'salesforce.com',
-  
-  // Banking/finance (non-shopping)
-  'paypal.com',
-  'chase.com',
-  'bankofamerica.com',
-  'wellsfargo.com',
-  'citibank.com',
-  'americanexpress.com',
-  'capitalone.com',
-  'discover.com',
-  'mint.com',
-  'creditkarma.com',
-  
-  // Government
-  'irs.gov',
-  'usa.gov',
-  'state.gov',
-  'cdc.gov',
-  'nih.gov',
-  
-  // Adult content
-  'pornhub.com',
-  'xvideos.com',
-  'xnxx.com',
-  
-  // Gaming (non-shopping)
-  'steampowered.com',
-  'epicgames.com',
-  'roblox.com',
-  'minecraft.net',
-  
-  // Other popular non-shopping sites
-  'weather.com',
-  'weather.gov',
-  'imdb.com',
-  'yelp.com',
-  'tripadvisor.com',
-  'airbnb.com',
-  'booking.com',
-  'expedia.com',
-  'zillow.com',
-  'realtor.com',
-  'indeed.com',
-  'glassdoor.com',
-  'craigslist.org'
-];
 
 /**
 * Listens for the `onInstalled` event, which fires when the extension is first
@@ -251,6 +102,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Background] Message received:', { type: request.type, sender_tab: sender.tab?.id });
   
   switch (request.type) {
+    // A content script has detected a brand on a page
+    case 'BRAND_DETECTED':
+      if (sender.tab?.id && request.data) {
+        detectedProducts.set(sender.tab.id, {
+          ...request.data,
+          detectedAt: new Date().toISOString(),
+          tabId: sender.tab.id,
+          domain: new URL(sender.tab.url).hostname
+        });
+        console.log('[Background] Brand detected and stored for tab:', sender.tab.id);
+      }
+      sendResponse({ success: true });
+      break;
+      
     // A content script is sending an analytics event to be logged.
     case 'TRACK_EVENT':
       trackAnalyticsEvent(request.data);
@@ -272,89 +137,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /**
- * Listens for when a tab is updated (e.g., the user navigates to a new URL).
- * This is now the main trigger for our brand detection and UI injection logic.
- * It ensures our UI loads last, preventing other extensions from overlaying it.
+ * NOTE: Content script injection is now handled via manifest.json
+ * This listener can be used for future tab-based features if needed.
+ * Domain exclusions are checked by the content script using excluded-domains.json
  */
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // We only want to run our logic when the page has finished loading and has a valid URL.
-  if (changeInfo.status !== 'complete' || !tab.url) {
-    return;
-  }
-  
-  // Check if the URL's domain is on our exclusion list.
-  try {
-    const url = new URL(tab.url);
-    if (EXCLUDED_DOMAINS.some(domain => url.hostname.includes(domain))) {
-      console.log(`[Background] Skipping tab ${tabId} on excluded domain: ${url.hostname}`);
-      return;
-    }
-  } catch (error) {
-    console.warn(`[Background] Could not parse URL, skipping: ${tab.url}`, error);
-    return; // Invalid URL, do nothing.
-  }
-
-  console.log(`[Background] Tab ${tabId} updated to complete status. Running detector...`);
-
-  try {
-    // Step 1: Inject the detection scripts.
-    await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: [
-        "src/shared/utils.js",
-        "src/content/brands.js",
-        "src/content/detector.js"
-      ],
-    });
-
-    // Step 2: Run the detector on the page.
-    const injectionResults = await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      function: () => {
-        // This function is executed in the content script context
-        const detector = new ProductDetector();
-        return detector.detectBrandOnPage();
-      },
-    });
-
-    // The result from the content script is wrapped in an array.
-    const detectionResult = injectionResults[0].result;
-
-    if (detectionResult && detectionResult.isSupported) {
-      console.log(`[Background] Supported brand "${detectionResult.productInfo.brand}" found on tab ${tabId}. Injecting UI...`);
-      
-      // Store the result for the popup.
-      detectedProducts.set(tabId, {
-        ...detectionResult,
-        detectedAt: new Date().toISOString(),
-        tabId: tabId,
-        domain: new URL(tab.url).hostname
-      });
-      
-      // Step 3: Inject the UI (CSS and main content script).
-      await chrome.scripting.insertCSS({
-        target: { tabId: tabId },
-        files: ["src/content/styles.css"],
-      });
-
-      await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ["src/content/main.js"],
-      });
-      
-    } else {
-      console.log(`[Background] No supported brand found on tab ${tabId}.`);
-      // Clear any old data for this tab if a brand is no longer detected.
-      if (detectedProducts.has(tabId)) {
-        detectedProducts.delete(tabId);
-      }
-    }
-  } catch (error) {
-    // This can happen if the page is a special Chrome page, has content security
-    // policies that block injection, or has already been invalidated (e.g., user navigated away).
-    console.warn(`[Background] Could not inject scripts into tab ${tabId}:`, error.message);
-  }
-});
 
 /**
  * Listens for when a tab is closed. We use this to perform garbage collection

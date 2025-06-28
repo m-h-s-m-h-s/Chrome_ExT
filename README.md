@@ -1,4 +1,4 @@
-# ChaChing Browser Extension (v2.2.0)
+# ChaChing Browser Extension (v2.3.0)
 
 An intelligent browser extension that finds the best Cash Back deals from ChaChing, ensuring you never miss out on savings, no matter where you shop online.
 
@@ -28,6 +28,7 @@ The extension should now be loaded and active. You can make changes to the code 
 -   **Intelligent Brand Detection**: Once a PDP is confirmed, the extension uses a sophisticated, score-based "voting" system to determine if a supported brand is present on the page.
 -   **Accurate Brand Detection**: Uses a robust "voting" system based on **whole-word matching** to accurately identify brands from a dynamically loaded list.
 -   **Dynamic Brand & Cashback Management**: The list of supported brands is managed in a simple `BrandList.csv` file, which is loaded dynamically. This allows for easy updates without requiring a new version of the extension. Cashback is displayed as "up to 33%".
+-   **Configurable Domain Exclusions**: Easily manage which sites the extension should avoid through a simple `excluded-domains.json` file. Perfect for excluding social media, email, streaming services, etc.
 -   **Robust Overlay Handling**: Implements a sophisticated `MutationObserver` to watch for other extensions or site elements that might cover the notification, dynamically re-adjusting its `z-index` to always win the "z-index war."
 -   **Shadow DOM Encapsulation**: The UI is rendered inside a Shadow DOM, preventing any style conflicts with the host page or other extensions.
 
@@ -51,7 +52,9 @@ The project is organized into a `src` directory.
 WebExt/
 ├── src/
 │   ├── assets/
-│   │   └── BrandList.csv      # The master list of all supported brands.
+│   │   ├── BrandList.csv               # The master list of all supported brands.
+│   │   ├── excluded-domains.json       # List of domains where the extension won't run.
+│   │   └── excluded-domains-readme.txt # Instructions for managing exclusions.
 │   ├── background/
 │   │   └── main.js          # Handles background tasks and extension events.
 │   ├── content/
@@ -63,7 +66,9 @@ WebExt/
 │   └── shared/
 │       └── utils.js         # Shared helper functions.
 ├── manifest.json            # The main extension configuration file.
-└── README.md                # This file.
+├── README.md                # This file.
+├── CHANGELOG.md             # Version history and changes.
+└── DEVELOPER.md             # Detailed developer documentation.
 ```
 
 ### 3. The Core Logic Flow (10 Minutes)
@@ -72,19 +77,20 @@ This is how a detection happens:
 
 1.  A user navigates to a new page.
 2.  The content scripts defined in `manifest.json` are loaded into the page.
-3.  **`brands.js`** is called first. It asynchronously fetches and parses `assets/BrandList.csv`, creating a map where normalized brand names point to the original brand data.
-4.  Once the brands are loaded, **`main.js`** initiates the detection process.
-5.  **`pdp-detector.js`** first checks if the current page is a Product Detail Page by:
+3.  **`main.js`** first checks if the current domain is in the `excluded-domains.json` list. If it is, the extension exits immediately.
+4.  **`brands.js`** is called next. It asynchronously fetches and parses `assets/BrandList.csv`, creating a map where normalized brand names point to the original brand data.
+5.  Once the brands are loaded, **`main.js`** initiates the detection process.
+6.  **`pdp-detector.js`** first checks if the current page is a Product Detail Page by:
     - Looking for action buttons (add to cart, buy now, etc.) - this is required
     - Calculating a confidence score from other e-commerce signals (price, images, reviews, etc.)
     - Requiring at least 75 points of confidence to be considered a PDP
-6.  If it's a PDP, **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
-7.  If both a PDP is detected AND a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI. The UI uses the original brand name from the map.
-8.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
+7.  If it's a PDP, **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
+8.  If both a PDP is detected AND a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI. The UI uses the original brand name from the map.
+9.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
 
-### 4. Your Most Common Task: Managing the Brand List (5 Minutes)
+### 4. Your Most Common Tasks (5 Minutes)
 
-You will frequently need to add or remove brands. This is now much simpler.
+#### Managing the Brand List
 
 1.  Open the file: **`src/assets/BrandList.csv`**.
 2.  This is a standard CSV file. Add or remove brand names on new lines. The file has a header row that is ignored.
@@ -97,12 +103,36 @@ You will frequently need to add or remove brands. This is now much simpler.
 3.  Save the file.
 4.  [Reload the extension](chrome://extensions/) for the changes to take effect on already-open tabs. New tabs will automatically get the updated list.
 
+#### Managing Excluded Domains
+
+To prevent the extension from running on certain sites (like YouTube, Gmail, etc.):
+
+1.  Open the file: **`src/assets/excluded-domains.json`**.
+2.  Add or remove domain names in the JSON array:
+    ```json
+    {
+      "excludedDomains": [
+        "youtube.com",
+        "gmail.com",
+        "facebook.com"
+      ]
+    }
+    ```
+3.  Save the file.
+4.  [Reload the extension](chrome://extensions/) for the changes to take effect.
+
 ### 5. How to Test (5 Minutes)
 1.  Load the extension as "unpacked" in `chrome://extensions`.
 2.  Open the regular DevTools console (`Cmd+Opt+I`) on a shopping site to see logs from the content scripts.
 3.  Navigate to a product page. Watch the console to see the brand loading, detection, and notification logic in action.
 
 ---
+
+## 📚 Additional Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and recent changes
+- **[DEVELOPER.md](DEVELOPER.md)** - Detailed technical documentation for developers
+- **[excluded-domains-readme.txt](src/assets/excluded-domains-readme.txt)** - Instructions for managing domain exclusions
 
 ## 📜 License
 

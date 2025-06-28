@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChaChing Browser Extension",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Find the best Cash Back deals from ChaChing so you don't lose out no matter where you shop online.",
   "permissions": [
     "activeTab",
@@ -29,7 +29,6 @@
       "exclude_matches": [
         "*://*.chaching.me/*",
         "*://chaching.me/*",
-        "*://*.google.com/*",
         "*://localhost/*",
         "*://127.0.0.1/*"
       ],
@@ -50,6 +49,7 @@
       "resources": [
         "src/assets/ChaChing_Logo.png",
         "src/assets/BrandList.csv",
+        "src/assets/excluded-domains.json",
         "src/content/styles.css",
         "src/shared/utils.js",
         "src/content/brands.js",

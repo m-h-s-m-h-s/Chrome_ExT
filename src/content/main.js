@@ -14,7 +14,7 @@
  * - Only then check for supported brands
  * - Show notification only if both conditions are met (or for special merchants)
  *
- * @version 2.6.0
+ * @version 2.7.0
  */
 
 /**
@@ -71,6 +71,13 @@ class ChachingContentScript {
    */
   async init() {
     try {
+      // First check if we're on an excluded domain
+      const isExcluded = await this.checkExcludedDomain();
+      if (isExcluded) {
+        ChachingUtils.log('info', 'ContentScript', 'Domain is in exclusion list. Exiting.');
+        return; // Exit early - don't run on excluded domains
+      }
+
       // Asynchronously load brands from the CSV file. This must complete first.
       await window.loadBrands();
 
@@ -104,6 +111,34 @@ class ChachingContentScript {
 
     } catch (error) {
       ChachingUtils.log('error', 'ContentScript', 'Initialization failed.', error);
+    }
+  }
+
+  /**
+   * Checks if the current domain is in the exclusion list
+   * @returns {Promise<boolean>} True if domain should be excluded
+   */
+  async checkExcludedDomain() {
+    try {
+      const response = await fetch(chrome.runtime.getURL('src/assets/excluded-domains.json'));
+      const data = await response.json();
+      const excludedDomains = data.excludedDomains || [];
+      
+      const currentHostname = window.location.hostname.toLowerCase();
+      
+      // Check if current hostname contains any excluded domain
+      for (const excludedDomain of excludedDomains) {
+        if (currentHostname.includes(excludedDomain.toLowerCase())) {
+          ChachingUtils.log('info', 'ContentScript', `Domain ${currentHostname} matches excluded domain: ${excludedDomain}`);
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      ChachingUtils.log('error', 'ContentScript', 'Failed to load excluded domains:', error);
+      // If we can't load the exclusions, continue with default behavior
+      return false;
     }
   }
 
