@@ -24,7 +24,7 @@ The extension should now be loaded and active. You can make changes to the code 
 ## ✨ Key Features
 
 -   **Privacy-Focused Permissions**: The extension uses the `activeTab` permission instead of broad `host_permissions`, meaning it only has access to a site when the user actively clicks on the extension icon.
--   **Intelligent Page Detection**: The extension first uses a sophisticated, score-based system to determine if a page is a Product Detail Page (PDP). Only after a page is confirmed as a PDP does it proceed to brand detection.
+-   **Intelligent Brand Detection**: The extension uses a sophisticated, score-based "voting" system to determine if a supported brand is present on the page. It runs on all page types, including search results and homepages.
 -   **Accurate Brand Detection**: Uses a robust "voting" system based on **whole-word matching** to accurately identify brands from a dynamically loaded list.
 -   **Dynamic Brand & Cashback Management**: The list of supported brands is managed in a simple `BrandList.csv` file, which is loaded dynamically. This allows for easy updates without requiring a new version of the extension. Cashback is displayed as "up to 33%".
 -   **Robust Overlay Handling**: Implements a sophisticated `MutationObserver` to watch for other extensions or site elements that might cover the notification, dynamically re-adjusting its `z-index` to always win the "z-index war."
@@ -72,11 +72,10 @@ This is how a detection happens:
 1.  A user navigates to a new page.
 2.  The content scripts defined in `manifest.json` are loaded into the page.
 3.  **`brands.js`** is called first. It asynchronously fetches and parses `assets/BrandList.csv`.
-4.  Once the brands are loaded, **`main.js`** initiates the detection process.
-5.  **`pdp-detector.js`** runs first, calculating a confidence score to determine if the page is a product page.
-6.  **If and only if** the page is identified as a PDP, **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
-7.  If a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI.
-8.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
+4.  Once the brands are loaded, **`main.js`** initiates the brand detection process.
+5.  **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
+6.  If a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI.
+7.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
 
 ### 4. Your Most Common Task: Managing the Brand List (5 Minutes)
 

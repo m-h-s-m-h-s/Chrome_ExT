@@ -3,13 +3,12 @@
  * @description The main content script, which acts as the on-page coordinator.
  *
  * This script is injected into every page and is responsible for:
- * 1.  Orchestrating the detection process by first checking if the page is a
- *     Product Detail Page (PDP) and then checking for supported brands.
- * 2.  Managing the state and display of the on-page notification UI, including dynamic cashback info.
+ * 1.  Orchestrating the brand detection process.
+ * 2.  Managing the state and display of the on-page notification UI.
  * 3.  Communicating with the background script to log events.
  * 4.  Handling dynamic page changes in Single-Page Applications (SPAs).
  *
- * @version 2.4.0
+ * @version 2.5.0
  */
 
 /**
@@ -133,23 +132,16 @@ class ChachingContentScript {
    * rapid DOM changes on modern websites.
    */
   startDetection() {
-    // The detection logic is now a two-step process.
     const detectPage = (isRetry = false) => {
       ChachingUtils.log('info', 'ContentScript', `Running detection... (Attempt: ${isRetry ? '2' : '1'})`);
-      
-      // Step 1: First, determine if this is a Product Detail Page.
-      if (!this.pdpDetector.isProductPage()) {
-        ChachingUtils.log('info', 'ContentScript', 'Not a product page based on PDP detection score.');
-        return; // Exit if it's not a PDP
-      }
 
-      ChachingUtils.log('info', 'ContentScript', 'PDP detected. Now checking for supported brands...');
+      // We no longer check for PDP first. We check for brands on any page.
       this.detectionResult = this.brandDetector.detectBrandOnPage();
       
       // If a supported brand was found on the page...
       if (this.detectionResult && this.detectionResult.isSupported) {
         
-        ChachingUtils.log('info', 'ContentScript', 'Supported brand page detected.', this.detectionResult);
+        ChachingUtils.log('info', 'ContentScript', 'Supported brand detected on page.', this.detectionResult);
 
         if (this.preferences.autoShow && !this.notificationShown) {
           this.showNotification();
@@ -308,8 +300,8 @@ class ChachingContentScript {
           </div>
           <div class="chaching-text">
             <div class="chaching-title">Up to 33% Cash Back - Big, Fast, Reliable</div>
-            <div class="chaching-subtitle">On ${displayBrandName} products and more TODAY from a similar store</div>
-            <div class="chaching-benchmark">+ Cheaper than Amazon BEFORE cash back. Discounts + coupons can also be further applied.</div>
+            <div class="chaching-subtitle">On ${displayBrandName} products TODAY from a similar store</div>
+            <div class="chaching-benchmark">Beat Amazon prices BEFORE Cash Back?! Discounts & coupons can also be further applied.</div>
           </div>
           <div class="chaching-actions">
             <button class="chaching-btn chaching-btn-primary" id="chaching-search">
