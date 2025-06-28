@@ -43,17 +43,154 @@ const detectedProducts = new Map();
  * @const {string[]}
  */
 const EXCLUDED_DOMAINS = [
+  // Original exclusions
   'chaching.me',
+  'localhost',
+  '127.0.0.1',
+  
+  // Search engines
   'google.com',
-  'youtube.com',
+  'bing.com',
+  'yahoo.com',
+  'duckduckgo.com',
+  'baidu.com',
+  'yandex.com',
+  
+  // Social media
   'facebook.com',
   'twitter.com',
+  'instagram.com',
   'linkedin.com',
-  'github.com',
-  'wikipedia.org',
+  'pinterest.com',
+  'tiktok.com',
+  'snapchat.com',
   'reddit.com',
-  'localhost',
-  '127.0.0.1'
+  'tumblr.com',
+  'discord.com',
+  
+  // Video/streaming
+  'youtube.com',
+  'netflix.com',
+  'twitch.tv',
+  'vimeo.com',
+  'dailymotion.com',
+  'hulu.com',
+  'disneyplus.com',
+  'hbomax.com',
+  'peacocktv.com',
+  'paramountplus.com',
+  'spotify.com',
+  'soundcloud.com',
+  'pandora.com',
+  
+  // Communication
+  'gmail.com',
+  'outlook.com',
+  'yahoo.com',
+  'mail.google.com',
+  'messenger.com',
+  'whatsapp.com',
+  'telegram.org',
+  'slack.com',
+  'zoom.us',
+  'teams.microsoft.com',
+  
+  // News/media
+  'cnn.com',
+  'bbc.com',
+  'nytimes.com',
+  'theguardian.com',
+  'wsj.com',
+  'forbes.com',
+  'bloomberg.com',
+  'reuters.com',
+  'apnews.com',
+  'npr.org',
+  'foxnews.com',
+  'nbcnews.com',
+  'washingtonpost.com',
+  'usatoday.com',
+  'time.com',
+  
+  // Reference/education
+  'wikipedia.org',
+  'wikimedia.org',
+  'archive.org',
+  'britannica.com',
+  'dictionary.com',
+  'thesaurus.com',
+  'coursera.org',
+  'udemy.com',
+  'edx.org',
+  'khanacademy.org',
+  'duolingo.com',
+  
+  // Developer/tech
+  'github.com',
+  'gitlab.com',
+  'bitbucket.org',
+  'stackoverflow.com',
+  'developer.mozilla.org',
+  'w3schools.com',
+  'codepen.io',
+  'jsfiddle.net',
+  'replit.com',
+  
+  // Productivity/business
+  'docs.google.com',
+  'drive.google.com',
+  'dropbox.com',
+  'notion.so',
+  'trello.com',
+  'asana.com',
+  'monday.com',
+  'airtable.com',
+  'salesforce.com',
+  
+  // Banking/finance (non-shopping)
+  'paypal.com',
+  'chase.com',
+  'bankofamerica.com',
+  'wellsfargo.com',
+  'citibank.com',
+  'americanexpress.com',
+  'capitalone.com',
+  'discover.com',
+  'mint.com',
+  'creditkarma.com',
+  
+  // Government
+  'irs.gov',
+  'usa.gov',
+  'state.gov',
+  'cdc.gov',
+  'nih.gov',
+  
+  // Adult content
+  'pornhub.com',
+  'xvideos.com',
+  'xnxx.com',
+  
+  // Gaming (non-shopping)
+  'steampowered.com',
+  'epicgames.com',
+  'roblox.com',
+  'minecraft.net',
+  
+  // Other popular non-shopping sites
+  'weather.com',
+  'weather.gov',
+  'imdb.com',
+  'yelp.com',
+  'tripadvisor.com',
+  'airbnb.com',
+  'booking.com',
+  'expedia.com',
+  'zillow.com',
+  'realtor.com',
+  'indeed.com',
+  'glassdoor.com',
+  'craigslist.org'
 ];
 
 /**

@@ -2,17 +2,42 @@
  * @file src/content/pdp-detector.js
  * @description The Product Detail Page (PDP) detection engine for the ChaChing Extension.
  *
- * This module uses a weighted, score-based system to determine if the current
- * page is a product page. It analyzes various positive and negative signals
- * throughout the DOM to calculate a confidence score.
+ * This module uses a confidence scoring system to determine if the current page is a 
+ * product detail page. It requires the presence of action buttons (add to cart, buy now, etc.)
+ * as a hard requirement, then accumulates confidence points from various other signals.
+ * 
+ * Detection Process:
+ * 1. Check for action buttons (required) - if not found, immediately return false
+ * 2. Calculate confidence score from other signals (0-180 possible points)
+ * 3. Return true if score >= 75 points
  *
- * @version 2.6.0
+ * Troubleshooting:
+ * Use the debugDetection() method in the console to see detailed results:
+ * ```javascript
+ * const detector = new PdpDetector();
+ * console.log(detector.debugDetection());
+ * ```
+ *
+ * @version 3.1.0
  */
 
 /**
- * The PdpDetector class encapsulates all logic for detecting product pages.
- * It uses a weighted scoring system based on a variety of positive and negative
- * signals found on the page.
+ * The PdpDetector class encapsulates all logic for detecting product detail pages.
+ * It uses a confidence scoring system with action buttons as a mandatory requirement.
+ * 
+ * Scoring System:
+ * - Structured Data with offer: 40 points (very high confidence)
+ * - Price found: 25 points (high confidence)
+ * - Product URL pattern: 25 points (high confidence)  
+ * - Product images: 20 points (medium confidence)
+ * - Reviews section: 15 points (medium confidence)
+ * - Product description: 15 points (medium confidence)
+ * - Breadcrumb navigation: 15 points (medium confidence)
+ * - Shipping/delivery info: 15 points (medium confidence)
+ * - Product metadata (SKU, etc): 10 points (low confidence)
+ * - Product selectors (size/color): 10 points (low confidence)
+ * 
+ * Total possible: 180 points (requires 75+ to be considered a PDP)
  * 
  * @class PdpDetector
  */
@@ -42,12 +67,19 @@ class PdpDetector {
       actionButtons: [
         'add to cart', 'add to basket', 'add to bag', 'buy now', 'buy it now',
         'purchase', 'add to wishlist', 'save for later', 'preorder', 'pre-order',
-        'notify me', 'out of stock', 'sold out', 'check availability'
+        'notify me', 'out of stock', 'sold out', 'check availability',
+        'checkout', 'add-to-cart', 'add-to-basket', 'add-to-bag',
+        'addtocart', 'addtobasket', 'addtobag', 'add_to_cart', 'add_to_basket', 'add_to_bag',
+        'shop now', 'get it now', 'order now', 'reserve', 'add to list',
+        'coming soon', 'join waitlist', 'join the waitlist', 'get notified'
       ],
 
       // Common fragments found in the ID or CLASS attributes of action buttons.
       actionButtonAttributes: [
-        'add-to-cart', 'addtocart', 'product-add', 'buy-now', 'add_to_cart'
+        'add-to-cart', 'addtocart', 'product-add', 'buy-now', 'add_to_cart',
+        'add-to-basket', 'addtobasket', 'add_to_basket', 'add-to-bag', 'addtobag', 'add_to_bag',
+        'buy-button', 'purchase-button', 'checkout', 'atc-button', 'atc_button',
+        'pdp-button', 'product-button', 'add-button', 'cart-button'
       ],
 
       // Common labels for product-specific details.
@@ -64,109 +96,112 @@ class PdpDetector {
       ],
 
       // Structured Data types (from Schema.org) that are strong PDP signals.
-      structuredDataTypes: ['Product', 'Offer', 'AggregateRating', 'Review'],
-
-      // --- Negative Signals: Heuristics for Search/Category Pages ---
-      // These keywords strongly suggest the page is a list of products, not a single product.
-      searchPageKeywords: [
-        'search results for', 'products found', 'items found', 'sort by', 'filter by',
-        'view all', 'shop all', 'showing 1-', 'of over', 'of about', 'items per page'
-      ]
+      structuredDataTypes: ['Product', 'Offer', 'AggregateRating', 'Review']
     };
-
-    /**
-     * The scoring system. Each signal has a weight. The final score is a sum of the
-     * weights of all detected signals. Negative weights are penalties for signals
-     * that indicate a non-PDP page.
-     * @type {Object}
-     */
-    this.weights = {
-      // --- Positive Weights ---
-      price: 25,            // Finding a price is a very strong signal.
-      actionButton: 20,     // E-commerce buttons are a strong signal.
-      productTitle: 15,     // A clear title is important.
-      productImage: 10,     // Product pages usually have prominent images.
-      metadata: 5,          // Details like SKU/model are a good sign.
-      reviews: 10,          // A reviews section is common on PDPs.
-      structuredData: 15,   // JSON-LD for 'Product' is a very reliable signal.
-      urlPattern: 5,        // URL contains '/product/', '/dp/', etc.
-      breadcrumb: 5,        // Breadcrumbs help confirm page hierarchy.
-
-      // --- Negative Weights ---
-      searchPageSignal: -20, // Penalty for finding search page keywords.
-      // A scaling penalty applied for each distinct product-like item found.
-      penaltyPerProduct: -5
-    };
-
-    /**
-     * The confidence score is the final calculated score. If it exceeds this threshold,
-     * the page is considered a product page. This value is tuned to balance sensitivity
-     * (finding all PDPs) and specificity (not flagging non-PDPs).
-     * @type {number}
-     */
-    this.confidenceThreshold = 50;
   }
 
   /**
-   * The main detection method for this class. It calculates a confidence score
-   * to determine if the current page is a Product Detail Page (PDP).
+   * The main detection method that determines if the current page is a Product Detail Page.
+   * 
+   * Requirements:
+   * 1. MUST have action buttons (add to cart, buy now, etc.)
+   * 2. MUST accumulate at least 75 confidence points from other signals
    *
-   * @returns {boolean} True if the calculated score exceeds the confidence threshold, otherwise false.
+   * @returns {boolean} True if both requirements are met, false otherwise
    */
   isProductPage() {
-    let score = 0;
+    // REQUIREMENT 1: Must have action buttons (add to cart, buy now, etc.)
+    const hasActionButtons = this.detectActionButtons();
+    if (!hasActionButtons) {
+      ChachingUtils.log('info', 'PdpDetector', 'No action buttons found - not a PDP');
+      return false;
+    }
+    
+    // REQUIREMENT 2: Calculate confidence score from other signals
+    let confidenceScore = 0;
     const signals = {};
-
-    // --- Gather Positive Signals ---
-    if (this.detectPrice().found) {
-      score += this.weights.price;
-      signals.price = true;
-    }
-    if (this.detectActionButtons()) {
-      score += this.weights.actionButton;
-      signals.actionButton = true;
-    }
-    if (this.detectProductImages().length > 0) {
-      score += this.weights.productImage;
-      signals.productImage = true;
-    }
-    if (this.detectProductMetadata()) {
-      score += this.weights.metadata;
-      signals.metadata = true;
-    }
-    if (this.detectReviews()) {
-      score += this.weights.reviews;
-      signals.reviews = true;
-    }
-    if (this.detectStructuredData().found) {
-      score += this.weights.structuredData;
+    
+    // Check for structured data (very high confidence)
+    const structuredData = this.detectStructuredData();
+    if (structuredData.found && structuredData.hasOffer) {
+      confidenceScore += 40;
       signals.structuredData = true;
     }
+    
+    // Check for price (high confidence)
+    if (this.detectPrice().found) {
+      confidenceScore += 25;
+      signals.price = true;
+    }
+    
+    // Check for product images (medium confidence)
+    if (this.detectProductImages()) {
+      confidenceScore += 20;
+      signals.productImages = true;
+    }
+    
+    // Check for product URL pattern (medium-high confidence)
     if (this.detectProductUrlPattern()) {
-      score += this.weights.urlPattern;
-      signals.urlPattern = true;
+      confidenceScore += 25;
+      signals.productUrl = true;
     }
+    
+    // Check for reviews (medium confidence)
+    if (this.detectReviews()) {
+      confidenceScore += 15;
+      signals.reviews = true;
+    }
+    
+    // Check for product description (low-medium confidence)
+    if (this.detectProductDescription()) {
+      confidenceScore += 15;
+      signals.description = true;
+    }
+    
+    // Check for product metadata like SKU, availability (low confidence)
+    if (this.detectProductMetadata()) {
+      confidenceScore += 10;
+      signals.metadata = true;
+    }
+    
+    // Check for product selectors (size, color, etc.) (low confidence)
+    if (this.detectProductSelectors()) {
+      confidenceScore += 10;
+      signals.selectors = true;
+    }
+    
+    // Check for breadcrumbs (medium confidence)
     if (this.detectBreadcrumbs()) {
-      score += this.weights.breadcrumb;
-      signals.breadcrumb = true;
+      confidenceScore += 15;
+      signals.breadcrumbs = true;
     }
     
-    // --- Apply Negative Signals ---
-    const pageText = document.body.innerText.toLowerCase();
-    if (this.indicators.searchPageKeywords.some(keyword => pageText.includes(keyword))) {
-      score += this.weights.searchPageSignal;
-      signals.searchPageSignal = true;
+    // Check for shipping/delivery information (medium confidence)
+    if (this.detectShippingInfo()) {
+      confidenceScore += 15;
+      signals.shippingInfo = true;
     }
-
-    ChachingUtils.log('info', 'PdpDetector', `Final PDP score: ${score}`, signals);
     
-    return score >= this.confidenceThreshold;
+    // Need at least 75 points of confidence
+    const isPDP = confidenceScore >= 75;
+    
+    ChachingUtils.log('info', 'PdpDetector', `PDP detection: ${isPDP} (score: ${confidenceScore})`, {
+      hasActionButtons,
+      signals,
+      confidenceScore
+    });
+    
+    return isPDP;
   }
 
   /**
-   * Detects price information on the page, looking in both the body text and meta tags.
+   * Detects price information on the page by searching for currency patterns
+   * in both the page text and meta tags.
    *
-   * @returns {Object} An object containing `found` (boolean), `price` (string), and `currency` (string).
+   * @returns {Object} Object with properties:
+   *   - found {boolean} Whether a price was detected
+   *   - price {string} The price string if found
+   *   - currency {string} The detected currency code (USD, EUR, etc.)
    */
   detectPrice() {
     const pageText = document.body.innerText;
@@ -205,91 +240,52 @@ class PdpDetector {
   }
 
   /**
-   * Detects common e-commerce action buttons (e.g., "Add to Cart").
-   * It checks both actual <button> elements and the general page text as a fallback.
-   * It now also checks the ID and CLASS attributes of buttons for more reliability.
+   * Detects e-commerce action buttons that indicate purchase intent.
+   * Searches for buttons by:
+   * 1. Text content (add to cart, buy now, checkout, etc.)
+   * 2. ID/class attributes (add-to-cart, buy-button, etc.)
+   * 3. Page text as fallback for non-standard implementations
    *
-   * @returns {boolean} True if any action button indicators are found.
+   * @returns {boolean} True if any action button is found, false otherwise
    */
   detectActionButtons() {
-    // Prioritize checking actual interactive elements.
-    const buttons = document.querySelectorAll('button, input[type="button"], input[type="submit"], a.button, a.btn');
-    
-    for (const button of buttons) {
-      const buttonText = (button.innerText?.toLowerCase() || button.value?.toLowerCase() || '');
-      const btnId = button.id?.toLowerCase() || '';
-      const btnClass = button.className?.toLowerCase() || '';
-
-      // Check #1: The button's visible text.
+    try {
+      // Simply check if any action button text exists on the page
+      const pageText = document.body?.innerText?.toLowerCase() || '';
+      
+      // Check for action button keywords in page text
       for (const indicator of this.indicators.actionButtons) {
-        if (buttonText.includes(indicator)) {
-          ChachingUtils.log('info', 'ProductDetector', `Action button found by text: "${indicator}"`);
+        if (pageText.includes(indicator)) {
+          ChachingUtils.log('info', 'PdpDetector', `Action button text found: "${indicator}"`);
           return true;
         }
       }
-
-      // Check #2: The button's ID and CLASS attributes.
-      // This is often more reliable than visible text.
-      for (const attrIndicator of this.indicators.actionButtonAttributes) {
-        if (btnId.includes(attrIndicator) || btnClass.includes(attrIndicator)) {
-          ChachingUtils.log('info', 'ProductDetector', `Action button found by attribute: "${attrIndicator}"`);
-          return true;
+      
+      // Also check button attributes as backup (for icon-only buttons)
+      const elements = document.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"]');
+      for (const element of elements) {
+        const elementHtml = element.outerHTML.toLowerCase();
+        for (const attrIndicator of this.indicators.actionButtonAttributes) {
+          if (elementHtml.includes(attrIndicator)) {
+            ChachingUtils.log('info', 'PdpDetector', `Action button attribute found: "${attrIndicator}"`);
+            return true;
+          }
         }
       }
+      
+      ChachingUtils.log('info', 'PdpDetector', 'No action buttons found on page');
+      return false;
+    } catch (error) {
+      ChachingUtils.log('error', 'PdpDetector', 'Error in detectActionButtons:', error);
+      return false;
     }
-
-    // As a fallback, check the entire page's text content. This can help on pages
-    // that use non-standard elements for buttons.
-    const pageText = document.body.innerText.toLowerCase();
-    return this.indicators.actionButtons.some(indicator => pageText.includes(indicator));
   }
 
   /**
-   * Detects the main product images on the page. It looks for images within common
-   * e-commerce gallery containers or those with specific semantic attributes.
+   * Detects product metadata that indicates detailed product information.
+   * Searches for keywords like: SKU, model, UPC, ISBN, availability, ships from, etc.
    *
-   * @returns {Array<string>} An array of URLs for the detected product images (up to 5).
-   */
-  detectProductImages() {
-    const images = [];
-    
-    // A list of CSS selectors for common product image containers and elements.
-    const imageSelectors = [
-      'img[class*="product-image"]',
-      'img[class*="product-photo"]',
-      'img[id*="product-image"]',
-      'img[itemprop="image"]', // Schema.org standard
-      '.product-images img',
-      '.gallery img',
-      'picture img',
-      'img[data-zoom]',
-      'img[data-magnify]'
-    ];
-
-    for (const selector of imageSelectors) {
-      const imgs = document.querySelectorAll(selector);
-      imgs.forEach(img => {
-        // Basic filtering to ignore tiny icons or tracking pixels.
-        if (img.src && img.width > 100 && img.height > 100) {
-          images.push(img.src);
-        }
-      });
-    }
-
-    // Also check the Open Graph image, as it's often a high-quality product shot.
-    const ogImage = document.querySelector('meta[property="og:image"]');
-    if (ogImage && ogImage.content) {
-      images.push(ogImage.content);
-    }
-
-    // Return a unique set of image URLs, capped at 5 to keep it manageable.
-    return [...new Set(images)].slice(0, 5);
-  }
-
-  /**
-   * Detects if the page contains common product metadata keywords (e.g., "SKU", "Model").
-   *
-   * @returns {boolean} True if any metadata keywords are found in the page text.
+   * @returns {boolean} True if product metadata keywords are found, false otherwise
    */
   detectProductMetadata() {
     const pageText = document.body.innerText.toLowerCase();
@@ -297,9 +293,12 @@ class PdpDetector {
   }
 
   /**
-   * Detects if the page has a customer reviews or ratings section.
+   * Detects customer reviews and ratings sections.
+   * Searches for:
+   * 1. Review-related text (reviews, ratings, stars, etc.)
+   * 2. Star rating elements (class or aria-label containing rating/star)
    *
-   * @returns {boolean} True if review-related elements or text are found.
+   * @returns {boolean} True if reviews/ratings are found, false otherwise
    */
   detectReviews() {
     // Check for common review-related text content.
@@ -315,54 +314,11 @@ class PdpDetector {
   }
 
   /**
-   * Detects and parses structured data (JSON-LD) on the page. This is a highly reliable
-   * source of product information if available.
+   * Detects product page URL patterns.
+   * Common patterns include: /product/, /products/, /item/, /dp/, /gp/product,
+   * /itm/, /ip/, product IDs like -p12345, /sku/, /pid/, etc.
    *
-   * @returns {Object} An object containing `found` (boolean) and `productName` if a
-   *                   product schema is detected.
-   */
-  detectStructuredData() {
-    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-    
-    for (const script of scripts) {
-      try {
-        const data = JSON.parse(script.textContent);
-        
-        // A helper function to find a 'Product' type in the JSON-LD data,
-        // which can sometimes be nested inside a '@graph' array.
-        const findProduct = (graph) => graph.find(item =>
-          item['@type'] === 'Product' || (Array.isArray(item['@type']) && item['@type'].includes('Product'))
-        );
-
-        let productNode = null;
-        if (data['@type'] === 'Product') {
-          productNode = data;
-        } else if (Array.isArray(data['@graph'])) {
-          productNode = findProduct(data['@graph']);
-        }
-        
-        if (productNode) {
-          return {
-            found: true,
-            productName: productNode.name,
-            brand: productNode.brand?.name || productNode.brand, // Brand can be an object or a string
-            price: productNode.offers?.price,
-            currency: productNode.offers?.priceCurrency
-          };
-        }
-      } catch (e) {
-        // The JSON might be invalid, so we ignore it and continue.
-        ChachingUtils.log('warn', 'ProductDetector', 'Could not parse JSON-LD script.', e);
-      }
-    }
-
-    return { found: false };
-  }
-
-  /**
-   * Detects common product-related patterns in the page URL (e.g., "/product/").
-   *
-   * @returns {boolean} True if the URL matches a known product page pattern.
+   * @returns {boolean} True if URL contains product page patterns, false otherwise
    */
   detectProductUrlPattern() {
     const url = window.location.href.toLowerCase();
@@ -382,10 +338,11 @@ class PdpDetector {
   }
 
   /**
-   * Detects if breadcrumb navigation is present on the page. Breadcrumbs are a good
-   * indicator of a structured e-commerce site.
+   * Detects breadcrumb navigation which indicates site hierarchy.
+   * Searches for elements with breadcrumb classes/IDs and checks for
+   * common separators (>, /) in the text.
    *
-   * @returns {boolean} True if breadcrumb navigation elements are found.
+   * @returns {boolean} True if breadcrumb navigation is found, false otherwise
    */
   detectBreadcrumbs() {
     const breadcrumbSelectors = [
@@ -408,13 +365,280 @@ class PdpDetector {
   }
 
   /**
-   * A helper function to get currency from meta tags, used as a fallback by detectPrice().
+   * Helper function to extract currency from meta tags.
+   * Checks product:price:currency and og:price:currency meta properties.
    *
-   * @returns {string} The detected currency code (e.g., "USD"), or a default.
+   * @returns {string} Currency code (e.g., "USD", "EUR"), defaults to "USD"
    */
   getCurrencyFromMeta() {
     const currencyMeta = document.querySelector('meta[property="product:price:currency"], meta[property="og:price:currency"]');
     return currencyMeta?.content || 'USD'; // Default to USD if not found.
+  }
+  
+  /**
+   * Detects product selectors that allow customization.
+   * Searches for: size selectors, color selectors, quantity inputs,
+   * and generic option/variant selectors.
+   * 
+   * @returns {boolean} True if product selectors are found, false otherwise
+   */
+  detectProductSelectors() {
+    const selectors = [
+      'select[name*="size"], select[name*="color"], select[name*="quantity"]',
+      '[class*="size-selector"], [class*="color-selector"], [class*="qty-selector"]',
+      'input[type="number"][name*="qty"], input[type="number"][name*="quantity"]',
+      '[data-option-selector], [data-variant-selector]',
+      '.product-options, .product-variants'
+    ];
+    
+    for (const selector of selectors) {
+      if (document.querySelector(selector)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Detects product images including galleries or single images.
+   * Searches for:
+   * 1. Gallery containers (product-gallery, image-gallery, etc.)
+   * 2. Single product images with appropriate size (>200x200)
+   * 3. Images near add-to-cart buttons
+   * 4. Thumbnail navigation indicators
+   * 
+   * @returns {boolean} True if product images are found, false otherwise
+   */
+  detectProductImages() {
+    // First check for gallery containers
+    const gallerySelectors = [
+      '[class*="product-gallery"]',
+      '[class*="image-gallery"]',
+      '[class*="product-images"]',
+      '[class*="product-photo"]',
+      '[class*="slider"][class*="product"]',
+      '[data-gallery], [data-zoom]',
+      '.product-image-container',
+      '.pdp-image'
+    ];
+    
+    for (const selector of gallerySelectors) {
+      const gallery = document.querySelector(selector);
+      if (gallery) {
+        // Check if it contains images
+        const images = gallery.querySelectorAll('img');
+        if (images.length > 0) {
+          return true;
+        }
+      }
+    }
+    
+    // Check for single product images (common on minimalist sites)
+    const singleImageSelectors = [
+      'img[class*="product-image"]',
+      'img[class*="product-photo"]',
+      'img[alt*="product"]',
+      'img[itemprop="image"]',
+      'main img[src*="/products/"]',
+      'main img[src*="/product/"]',
+      '[data-product-image] img'
+    ];
+    
+    for (const selector of singleImageSelectors) {
+      const img = document.querySelector(selector);
+      if (img && img.width > 200 && img.height > 200) {
+        // It's a reasonably sized product image
+        return true;
+      }
+    }
+    
+    // Check for images near the add to cart button (strong signal)
+    const addToCart = document.querySelector(
+      'button[class*="add-to-cart"], button[class*="add-to-bag"], ' +
+      '[id*="add-to-cart"], [data-add-to-cart]'
+    );
+    
+    if (addToCart) {
+      // Look for large images in the same section/container
+      let container = addToCart.closest('section, article, [class*="product"], main');
+      if (container) {
+        const nearbyImages = container.querySelectorAll('img');
+        for (const img of nearbyImages) {
+          if (img.width > 200 && img.height > 200) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    // Check for thumbnail navigation (indicates gallery even if main image is single)
+    const hasThumbnails = document.querySelector(
+      '[class*="thumbnail"], [class*="thumb-nav"], [data-thumbnail]'
+    );
+    
+    return !!hasThumbnails;
+  }
+  
+  /**
+   * Detects product description sections with substantial content.
+   * Searches for:
+   * 1. Elements with description-related classes/IDs
+   * 2. Description headings followed by content (>50 chars)
+   * 3. Schema.org description properties
+   * 
+   * @returns {boolean} True if product description is found, false otherwise
+   */
+  detectProductDescription() {
+    const descriptionSelectors = [
+      '[class*="product-description"]',
+      '[class*="product-details"]',
+      '[class*="product-info"]',
+      '[id*="product-description"]',
+      '[id*="product-details"]',
+      '[data-product-description]',
+      '.description',
+      '#description',
+      '[itemprop="description"]'
+    ];
+    
+    for (const selector of descriptionSelectors) {
+      const element = document.querySelector(selector);
+      if (element && element.textContent.trim().length > 50) {
+        return true;
+      }
+    }
+    
+    // Check for description headings followed by content
+    const headings = document.querySelectorAll('h2, h3, h4');
+    for (const heading of headings) {
+      const text = heading.textContent.toLowerCase();
+      if (text.includes('description') || text.includes('details') || text.includes('about')) {
+        // Check if there's meaningful content after this heading
+        const nextElement = heading.nextElementSibling;
+        if (nextElement && nextElement.textContent.trim().length > 50) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Detects shipping and delivery information on the page.
+   * Common indicators of product pages include shipping costs, delivery times, etc.
+   * 
+   * @returns {boolean} True if shipping/delivery information is found, false otherwise
+   */
+  detectShippingInfo() {
+    const shippingKeywords = [
+      'free shipping', 'shipping', 'delivery', 'ships in', 'ships within',
+      'estimated delivery', 'arrives', 'get it by', 'standard shipping',
+      'express shipping', 'overnight', 'expedited', 'prime delivery',
+      'in stock', 'ready to ship', 'usually ships', 'delivery options',
+      'shipping cost', 'shipping fee', 'delivery fee', 'ships from',
+      'fulfilled by', 'dispatched from'
+    ];
+    
+    const pageText = document.body.innerText.toLowerCase();
+    return shippingKeywords.some(keyword => pageText.includes(keyword));
+  }
+  
+  /**
+   * Debug method to get detailed detection results for troubleshooting
+   * @returns {Object} Detailed breakdown of all detection results
+   */
+  debugDetection() {
+    const results = {
+      url: window.location.href,
+      actionButtons: {
+        found: this.detectActionButtons(),
+        pageText: document.body?.innerText?.substring(0, 500) || 'No page text'
+      },
+      scoring: {
+        structuredData: this.detectStructuredData(),
+        price: this.detectPrice(),
+        images: this.detectProductImages(),
+        urlPattern: this.detectProductUrlPattern(),
+        reviews: this.detectReviews(),
+        description: this.detectProductDescription(),
+        metadata: this.detectProductMetadata(),
+        selectors: this.detectProductSelectors(),
+        breadcrumbs: this.detectBreadcrumbs(),
+        shipping: this.detectShippingInfo()
+      },
+      totalScore: 0,
+      threshold: 75
+    };
+    
+    // Calculate score
+    if (results.scoring.structuredData.found && results.scoring.structuredData.hasOffer) results.totalScore += 40;
+    if (results.scoring.price.found) results.totalScore += 25;
+    if (results.scoring.images) results.totalScore += 20;
+    if (results.scoring.urlPattern) results.totalScore += 25;
+    if (results.scoring.reviews) results.totalScore += 15;
+    if (results.scoring.description) results.totalScore += 15;
+    if (results.scoring.metadata) results.totalScore += 10;
+    if (results.scoring.selectors) results.totalScore += 10;
+    if (results.scoring.breadcrumbs) results.totalScore += 15;
+    if (results.scoring.shipping) results.totalScore += 15;
+    
+    results.isPDP = results.actionButtons.found && results.totalScore >= results.threshold;
+    
+    return results;
+  }
+  
+  /**
+   * Detects structured data (JSON-LD) for Product schema with offers.
+   * This is the most reliable signal for product pages.
+   * 
+   * @returns {Object} Object with properties:
+   *   - found {boolean} Whether Product schema was found
+   *   - hasOffer {boolean} Whether the product has offer/price information
+   *   - productName {string} The product name if found
+   *   - brand {string} The brand name if found
+   *   - price {string|number} The product price if found
+   */
+  detectStructuredData() {
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    
+    for (const script of scripts) {
+      try {
+        const data = JSON.parse(script.textContent);
+        
+        // Check if it's a Product with an offer
+        if (data['@type'] === 'Product' && data.offers) {
+          return {
+            found: true,
+            hasOffer: true,
+            productName: data.name,
+            brand: data.brand?.name || data.brand,
+            price: data.offers?.price
+          };
+        }
+        
+        // Check in @graph
+        if (Array.isArray(data['@graph'])) {
+          const product = data['@graph'].find(item => 
+            item['@type'] === 'Product' && item.offers
+          );
+          if (product) {
+            return {
+              found: true,
+              hasOffer: true,
+              productName: product.name,
+              brand: product.brand?.name || product.brand,
+              price: product.offers?.price
+            };
+          }
+        }
+      } catch (e) {
+        // Invalid JSON, continue
+      }
+    }
+    
+    return { found: false, hasOffer: false };
   }
 }
 
