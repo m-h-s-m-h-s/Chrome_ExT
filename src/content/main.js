@@ -89,6 +89,7 @@ class ChachingContentScript {
       // Set up a listener to handle messages from other parts of the extension
       // (like the popup or background script).
       chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        // This is now only for background script communication, if any.
         this.handleMessage(request, sender, sendResponse);
         return true; // `return true` is required for asynchronous sendResponse calls.
       });
@@ -445,39 +446,14 @@ class ChachingContentScript {
   }
 
   /**
-   * Handles incoming messages from other parts of the extension (popup, background).
+   * Handles incoming messages from other parts of the extension (e.g., background script).
    * This acts as the API for the content script.
    */
   handleMessage(request, sender, sendResponse) {
     ChachingUtils.log('info', 'ContentScript', 'Message received.', request);
 
     switch (request.type) {
-      // The popup is requesting the latest detection result.
-      case 'GET_DETECTION_RESULT':
-        sendResponse({ success: true, data: this.detectionResult });
-        break;
-
-      // The popup wants to trigger a search.
-      case 'TRIGGER_SEARCH':
-        this.searchOnChaching();
-        sendResponse({ success: true });
-        break;
-
-      // The popup wants to manually trigger the notification.
-      case 'SHOW_NOTIFICATION':
-        if (!this.notificationShown && this.detectionResult?.isProductPage) {
-          this.showNotification();
-        }
-        sendResponse({ success: true });
-        break;
-      
-      // The user has requested a re-scan of the page.
-      case 'RE_DETECT':
-        this.notificationShown = false;
-        this.startDetection();
-        sendResponse({ success: true });
-        break;
-
+      // Add cases for any future messages from the background script.
       default:
         // Respond to unknown message types.
         sendResponse({ success: false, error: 'Unknown message type' });
