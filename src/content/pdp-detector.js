@@ -376,7 +376,7 @@ class PdpDetector {
   }
   
   /**
-   * Detects product selectors that allow customization.
+   * Detects product variant selectors that allow customization.
    * Searches for: size selectors, color selectors, quantity inputs,
    * and generic option/variant selectors.
    * 

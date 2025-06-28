@@ -6,7 +6,12 @@
  * (like manual searches or toggling settings), and communicates with the
  * content and background scripts.
  *
- * @version 2.2.0
+ * The popup shows detected products only when:
+ * - The page is a valid Product Detail Page (PDP)
+ * - A supported brand is detected
+ * - OR the site is a special merchant partner
+ *
+ * @version 2.3.0
  */
 
 /**
@@ -202,14 +207,24 @@ class PopupController {
 
   /**
    * Display the detection result in the UI
+   * 
+   * Shows the product detected state only when:
+   * - The page is a PDP AND has a supported brand, OR
+   * - The site is a special merchant partner
+   * 
+   * Otherwise shows the "no product" state.
    */
   displayDetectionResult() {
-    const { productInfo, confidence, signals } = this.state.detectionResult;
+    const { productInfo, confidence, signals, isSupported, isSpecialMerchant } = this.state.detectionResult;
 
     // Hide loading state
     this.hideAllStates();
 
-    if (this.state.detectionResult.isProductPage && productInfo.title) {
+    // Check if we should show product state: either (PDP + supported brand) OR special merchant
+    const shouldShowProduct = (this.state.detectionResult.isProductPage && isSupported && productInfo?.title) ||
+                            (isSpecialMerchant && productInfo?.title);
+
+    if (shouldShowProduct) {
       // Show product detected state
       this.elements.productDetectedState.classList.remove('hidden');
 
@@ -265,6 +280,15 @@ class PopupController {
    */
   async searchOnChaching() {
     if (!this.state.detectionResult?.productInfo?.title) return;
+    
+    // Ensure we have a valid detection result (supported brand on PDP or special merchant)
+    const isValid = (this.state.detectionResult?.isProductPage && this.state.detectionResult?.isSupported) ||
+                   this.state.detectionResult?.isSpecialMerchant;
+    
+    if (!isValid) {
+      console.error('[Popup] Invalid detection result for search');
+      return;
+    }
 
     const searchUrl = this.generateChachingUrl(this.state.detectionResult.productInfo.title);
     
@@ -322,7 +346,15 @@ class PopupController {
    */
   hideManualSearch() {
     this.elements.manualSearchState.classList.add('hidden');
-    if (this.state.detectionResult?.isProductPage) {
+    
+    // Check same conditions as displayDetectionResult
+    const shouldShowProduct = (this.state.detectionResult?.isProductPage && 
+                             this.state.detectionResult?.isSupported && 
+                             this.state.detectionResult?.productInfo?.title) ||
+                            (this.state.detectionResult?.isSpecialMerchant && 
+                             this.state.detectionResult?.productInfo?.title);
+    
+    if (shouldShowProduct) {
       this.elements.productDetectedState.classList.remove('hidden');
     } else {
       this.elements.noProductState.classList.remove('hidden');

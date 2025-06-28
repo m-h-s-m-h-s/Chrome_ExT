@@ -3,12 +3,18 @@
  * @description The main content script, which acts as the on-page coordinator.
  *
  * This script is injected into every page and is responsible for:
- * 1.  Orchestrating the brand detection process.
- * 2.  Managing the state and display of the on-page notification UI.
- * 3.  Communicating with the background script to log events.
- * 4.  Handling dynamic page changes in Single-Page Applications (SPAs).
+ * 1.  Detecting if the current page is a Product Detail Page (PDP).
+ * 2.  If it's a PDP, orchestrating the brand detection process.
+ * 3.  Managing the state and display of the on-page notification UI.
+ * 4.  Communicating with the background script to log events.
+ * 5.  Handling dynamic page changes in Single-Page Applications (SPAs).
  *
- * @version 2.5.0
+ * Detection Flow:
+ * - First verify the page is a PDP (has action buttons + 75+ confidence score)
+ * - Only then check for supported brands
+ * - Show notification only if both conditions are met (or for special merchants)
+ *
+ * @version 2.6.0
  */
 
 /**
@@ -127,27 +133,53 @@ class ChachingContentScript {
   }
 
   /**
-   * Kicks off the product detection process. It uses a debounced function
-   * to prevent it from running too frequently, which can happen during
-   * rapid DOM changes on modern websites.
+   * Kicks off the two-stage detection process:
+   * 1. First checks if the current page is a Product Detail Page (PDP)
+   * 2. If it's a PDP, then checks for supported brands
+   * 
+   * Uses a debounced function to prevent it from running too frequently,
+   * which can happen during rapid DOM changes on modern websites.
+   * 
+   * Notifications are shown only when BOTH conditions are met:
+   * - The page is a valid PDP (action buttons + 75+ confidence score)
+   * - A supported brand is detected on the page
+   * 
+   * Exception: Special merchant sites bypass the PDP requirement.
    */
   startDetection() {
     const detectPage = (isRetry = false) => {
       ChachingUtils.log('info', 'ContentScript', `Running detection... (Attempt: ${isRetry ? '2' : '1'})`);
 
-      // We no longer check for PDP first. We check for brands on any page.
-      this.detectionResult = this.brandDetector.detectBrandOnPage();
-      
-      // If a supported brand was found on the page...
-      if (this.detectionResult && this.detectionResult.isSupported) {
-        
-        ChachingUtils.log('info', 'ContentScript', 'Supported brand detected on page.', this.detectionResult);
+      // First check if this is a product detail page
+      const isPDP = this.pdpDetector.isProductPage();
+      ChachingUtils.log('info', 'ContentScript', `PDP check result: ${isPDP}`);
 
-        if (this.preferences.autoShow && !this.notificationShown) {
-          this.showNotification();
+      // Only detect brands if we're on a product page
+      if (isPDP) {
+        this.detectionResult = this.brandDetector.detectBrandOnPage();
+        
+        // Add isProductPage flag to the result
+        if (this.detectionResult) {
+          this.detectionResult.isProductPage = true;
         }
-        this.notifyBackgroundScript();
+        
+        // If a supported brand was found on the page...
+        if (this.detectionResult && this.detectionResult.isSupported) {
+          
+          ChachingUtils.log('info', 'ContentScript', 'Supported brand detected on PDP.', this.detectionResult);
+
+          if (this.preferences.autoShow && !this.notificationShown) {
+            this.showNotification();
+          }
+          this.notifyBackgroundScript();
+        } else if (!isRetry) {
+          ChachingUtils.log('info', 'ContentScript', 'No supported brand found on PDP on first attempt. Scheduling a retry.');
+          setTimeout(() => detectPage(true), 3000); // 3-second delay for the retry.
+        } else {
+          ChachingUtils.log('info', 'ContentScript', 'No supported brand was found on this PDP after retry.');
+        }
       } else {
+        // Check for special merchants even on non-PDP pages
         const currentHostname = window.location.hostname.toLowerCase();
         const specialMerchants = ['steals.com', 'beachcamera.com', 'videoshops.com', 'salonhq.com', 'pedalelectric.com'];
         const matchedMerchant = specialMerchants.find(merchant => currentHostname.includes(merchant));
@@ -157,6 +189,7 @@ class ChachingContentScript {
             this.detectionResult = {
                 isSupported: true,
                 isSpecialMerchant: true,
+                isProductPage: false, // Not a PDP but still show notification
                 productInfo: {
                     brand: matchedMerchant, 
                     title: `Up to 33% cash back at ${matchedMerchant}`,
@@ -168,10 +201,10 @@ class ChachingContentScript {
             }
             this.notifyBackgroundScript();
         } else if (!isRetry) {
-          ChachingUtils.log('info', 'ContentScript', 'No supported brand found on first attempt. Scheduling a retry.');
+          ChachingUtils.log('info', 'ContentScript', 'Not a PDP. Scheduling a retry in case page is still loading.');
           setTimeout(() => detectPage(true), 3000); // 3-second delay for the retry.
         } else {
-          ChachingUtils.log('info', 'ContentScript', 'No supported brand was found on this page after retry.');
+          ChachingUtils.log('info', 'ContentScript', 'This is not a product detail page after retry.');
         }
       }
     };
@@ -182,13 +215,27 @@ class ChachingContentScript {
   }
 
   /**
-   * Handles showing the on-page notification. It first checks if the user has
-   * dismissed a notification on the exact same URL within the last 15 minutes.
+   * Handles showing the on-page notification.
+   * 
+   * Pre-conditions for showing:
+   * 1. Must be on a PDP with a supported brand OR on a special merchant site
+   * 2. Must not have been dismissed on this URL within the last 15 minutes
+   * 3. Must not already be showing a notification
+   * 
    * The notification is designed to be persistent and must be manually dismissed.
    */
   async showNotification() {
     // Prevent duplicate notifications
     if (this.notificationShown || !this.detectionResult?.productInfo?.title) {
+      return;
+    }
+
+    // Check if we should show notification: either on a PDP with brand OR special merchant
+    const shouldShow = (this.detectionResult?.isProductPage && this.detectionResult?.isSupported) || 
+                      this.detectionResult?.isSpecialMerchant;
+    
+    if (!shouldShow) {
+      ChachingUtils.log('info', 'ContentScript', 'Not showing notification - not on PDP with brand or special merchant');
       return;
     }
 
@@ -465,8 +512,8 @@ class ChachingContentScript {
 
       // The popup wants to manually trigger the notification.
       case 'SHOW_NOTIFICATION':
-        if (!this.notificationShown && this.detectionResult?.isProductPage) {
-          this.showNotification();
+        if (!this.notificationShown) {
+          this.showNotification(); // showNotification now has its own validation
         }
         sendResponse({ success: true });
         break;

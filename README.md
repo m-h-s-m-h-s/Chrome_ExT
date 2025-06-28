@@ -1,4 +1,4 @@
-# ChaChing Browser Extension (v2.1.1)
+# ChaChing Browser Extension (v2.2.0)
 
 An intelligent browser extension that finds the best Cash Back deals from ChaChing, ensuring you never miss out on savings, no matter where you shop online.
 
@@ -24,7 +24,8 @@ The extension should now be loaded and active. You can make changes to the code 
 ## ✨ Key Features
 
 -   **Privacy-Focused Permissions**: The extension uses the `activeTab` permission instead of broad `host_permissions`, meaning it only has access to a site when the user actively clicks on the extension icon.
--   **Intelligent Brand Detection**: The extension uses a sophisticated, score-based "voting" system to determine if a supported brand is present on the page. It runs on all page types, including search results and homepages.
+-   **Product Page Detection**: The extension first verifies that you're on a Product Detail Page (PDP) using a confidence scoring system that checks for action buttons, prices, product images, and other e-commerce indicators.
+-   **Intelligent Brand Detection**: Once a PDP is confirmed, the extension uses a sophisticated, score-based "voting" system to determine if a supported brand is present on the page.
 -   **Accurate Brand Detection**: Uses a robust "voting" system based on **whole-word matching** to accurately identify brands from a dynamically loaded list.
 -   **Dynamic Brand & Cashback Management**: The list of supported brands is managed in a simple `BrandList.csv` file, which is loaded dynamically. This allows for easy updates without requiring a new version of the extension. Cashback is displayed as "up to 33%".
 -   **Robust Overlay Handling**: Implements a sophisticated `MutationObserver` to watch for other extensions or site elements that might cover the notification, dynamically re-adjusting its `z-index` to always win the "z-index war."
@@ -38,8 +39,8 @@ Your goal is to understand the project and be able to confidently make changes. 
 
 ### 1. The Big Picture (5 Minutes)
 
--   **What it does**: When a user visits a page, a content script is loaded that checks for the presence of supported brands. If a brand is found, a notification is displayed offering cashback of up to 33%. It also has special handling for a few partner merchant sites.
--   **Core Principle**: The logic is driven by a content script that loads the brand list asynchronously. The UI is injected only when a brand is found.
+-   **What it does**: When a user visits a page, a content script is loaded that first checks if it's a Product Detail Page (PDP) by looking for e-commerce indicators like "Add to Cart" buttons and product information. If it's a PDP, it then checks for the presence of supported brands. If both conditions are met, a notification is displayed offering cashback of up to 33%. It also has special handling for a few partner merchant sites.
+-   **Core Principle**: The logic is driven by a two-stage detection process: First verify it's a product page, then check for supported brands. The UI is injected only when both conditions are satisfied.
 -   **Key Challenge**: The web is a battleground for user attention. This extension is architected to be a "good citizen" while still ensuring its notification is visible by loading last and intelligently managing its stacking order (`z-index`).
 
 ### 2. File Structure (5 Minutes)
@@ -72,10 +73,14 @@ This is how a detection happens:
 1.  A user navigates to a new page.
 2.  The content scripts defined in `manifest.json` are loaded into the page.
 3.  **`brands.js`** is called first. It asynchronously fetches and parses `assets/BrandList.csv`, creating a map where normalized brand names point to the original brand data.
-4.  Once the brands are loaded, **`main.js`** initiates the brand detection process.
-5.  **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
-6.  If a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI. The UI uses the original brand name from the map.
-7.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
+4.  Once the brands are loaded, **`main.js`** initiates the detection process.
+5.  **`pdp-detector.js`** first checks if the current page is a Product Detail Page by:
+    - Looking for action buttons (add to cart, buy now, etc.) - this is required
+    - Calculating a confidence score from other e-commerce signals (price, images, reviews, etc.)
+    - Requiring at least 75 points of confidence to be considered a PDP
+6.  If it's a PDP, **`brand-detector.js`** runs its strategies to find brand candidates on the page. It uses **whole-word matching** to vote for the best brand.
+7.  If both a PDP is detected AND a supported brand is found (or if the site is a special partner site), **`main.js`** injects and displays the notification UI. The UI uses the original brand name from the map.
+8.  The UI script uses a `MutationObserver` to ensure its `z-index` remains the highest on the page.
 
 ### 4. Your Most Common Task: Managing the Brand List (5 Minutes)
 
